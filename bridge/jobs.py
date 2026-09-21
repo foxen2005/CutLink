@@ -53,7 +53,8 @@ def build_settings(material_id: str | None, overrides: dict | None) -> CutSettin
         pressure=int(m.get("pressure", 10)),
         depth=None if m.get("depth") in (None, "") else int(m["depth"]),
         passes=int(m.get("passes", 1)),
-        blade_offset_mm=float(m.get("blade_offset", 0.0)),
+        blade=str(m.get("blade", "auto")),
+        blade_offset_mm=None if m.get("blade_offset") in (None, "") else float(m["blade_offset"]),
         mat=int(m.get("mat", 1)),
     )
 

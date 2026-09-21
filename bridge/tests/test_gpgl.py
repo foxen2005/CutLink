@@ -21,6 +21,18 @@ def test_setup_uses_toolholder_and_ranges():
     assert cmds[-1] == "TF3,1"
 
 
+def test_ratchet_blade_skips_TF_and_uses_offset():
+    s = CutSettings(blade="ratchet", depth=3)
+    cmds = setup_commands(s)
+    assert s.depth is None
+    assert not any(c.startswith("TF") for c in cmds)
+    assert "FC5,1,1" in cmds          # 0.25 mm = 5 SU
+
+
+def test_explicit_blade_offset_wins():
+    assert CutSettings(blade="ratchet", blade_offset_mm=0.5).blade_offset_mm == 0.5
+
+
 def test_setup_without_depth_has_no_TF():
     assert not any(c.startswith("TF") for c in setup_commands(CutSettings(depth=None)))
 

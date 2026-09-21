@@ -101,6 +101,8 @@
     inPressure: $('in-pressure'),
     inSpeed: $('in-speed'),
     inDepth: $('in-depth'),
+    lblDepth: $('lbl-depth'),
+    selBlade: $('sel-blade'),
     inPasses: $('in-passes'),
     selTool: $('sel-tool'),
     selMat: $('sel-mat'),
@@ -381,7 +383,17 @@
     el.inDepth.value = (m.depth === null || m.depth === undefined) ? '' : m.depth;
     el.inPasses.value = m.passes || 1;
     el.selTool.value = String(m.tool || 1);
+    el.selBlade.value = m.blade || 'ratchet';
+    updateDepthLabel();
     try { localStorage.setItem('cameocut.material', m.id); } catch (e) {}
+  }
+
+  // Con trinquete la profundidad se fija a mano en la cuchilla: el número es solo una sugerencia
+  function updateDepthLabel() {
+    var b = el.selBlade.value;
+    el.lblDepth.textContent = b === 'auto' ? 'Prof. AutoBlade (1–10)'
+      : b === 'pen' ? 'Profundidad (no aplica)' : 'Prof. sugerida en cuchilla (1–10)';
+    el.inDepth.disabled = (b !== 'auto');
   }
 
   function numOrNull(input, min, max) {
@@ -402,6 +414,8 @@
     var n = numOrNull(el.inPasses, 1, 5); if (n !== null) o.passes = n;
     o.tool = parseInt(el.selTool.value, 10) || 1;
     o.mat = parseInt(el.selMat.value, 10) || 0;
+    o.blade = el.selBlade.value || 'ratchet';
+    if (o.blade !== 'auto') delete o.depth;
     return o;
   }
 
@@ -733,6 +747,7 @@
     el.selColor.addEventListener('change', updateSwatch);
 
     el.selMaterial.addEventListener('change', applyMaterial);
+    el.selBlade.addEventListener('change', updateDepthLabel);
 
     el.chkPnc.addEventListener('change', function () {
       el.pncBadge.hidden = !el.chkPnc.checked;

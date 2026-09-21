@@ -45,6 +45,13 @@ class MachineError(Exception):
     pass
 
 
+BLADE_TYPES = {
+    "auto": 0.0,      # AutoBlade: la máquina ajusta profundidad (TF) y compensa offset
+    "ratchet": 0.25,  # cuchilla de trinquete manual: profundidad a mano, offset típico 0.25 mm
+    "pen": 0.0,       # pluma/rotulador
+}
+
+
 @dataclass
 class CutSettings:
     tool: int = 1                 # 1 = carro izquierdo (AutoBlade), 2 = derecho
@@ -52,12 +59,22 @@ class CutSettings:
     pressure: int = 10            # 1-33
     depth: int | None = None      # 1-10 AutoBlade; None = no tocar
     passes: int = 1
-    blade_offset_mm: float = 0.0  # 0 para AutoBlade; ~0.25-0.5 para cuchillas manuales
+    blade: str = "auto"           # ver BLADE_TYPES
+    blade_offset_mm: float | None = None  # None = valor por defecto del tipo de cuchilla
     mat: int = 1                  # ver MAT_TYPES
     lift: bool = False            # levantar herramienta entre trazos (papel grueso)
     sharpen_corners: bool = False
 
+    def __post_init__(self):
+        if self.blade_offset_mm is None:
+            self.blade_offset_mm = BLADE_TYPES.get(self.blade, 0.0)
+        # Solo la AutoBlade entiende TF; con trinquete/pluma sería un comando sin sentido
+        if self.blade != "auto":
+            self.depth = None
+
     def validate(self) -> None:
+        if self.blade not in BLADE_TYPES:
+            raise ValueError(f"blade debe ser uno de {list(BLADE_TYPES)}: {self.blade}")
         def chk(name, v, rng):
             if not (rng[0] <= v <= rng[1]):
                 raise ValueError(f"{name} fuera de rango {rng}: {v}")
