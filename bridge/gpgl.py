@@ -65,6 +65,11 @@ class CutSettings:
     lift: bool = False            # levantar herramienta entre trazos (papel grueso)
     sharpen_corners: bool = False
     return_home: bool = True      # al terminar, devolver el papel/carro al origen
+    # Con mat, la hoja no está en el origen de la máquina sino desplazada sobre la
+    # cuadrícula del mat: se suma a todas las coordenadas (y al inicio de la
+    # búsqueda de marcas en print & cut). Sin mat debe ser 0.
+    mat_offset_x_mm: float = 0.0
+    mat_offset_y_mm: float = 0.0
 
     def __post_init__(self):
         if self.blade_offset_mm is None:
@@ -97,6 +102,8 @@ class RegmarkSettings:
     (sin contar el grosor), top/left = inset desde el borde de la hoja."""
     enabled: bool = False
     inset_mm: float = 10.0
+    thick_mm: float = 0.5         # grosor de las líneas de las marcas (TB53)
+    length_mm: float = 20.0       # largo del brazo de las L (TB51)
     page_w_mm: float = 0.0
     page_h_mm: float = 0.0
     calib_x_mm: float = 0.0
@@ -141,11 +148,15 @@ def setup_commands(s: CutSettings) -> list[str]:
 def regmark_commands(r: RegmarkSettings) -> list[str]:
     """Secuencia previa a TB123. TB123 se envía aparte porque hay que leer la
     respuesta (la máquina escanea las marcas y puede tardar varios segundos)."""
-    return ["TB50,0", "TB99", "TB52,2", "TB51,400", "TB53,10", "TB55,1"]
+    return ["TB50,0", "TB99", "TB52,2", f"TB51,{mm(r.length_mm)}", f"TB53,{mm(r.thick_mm)}", "TB55,1"]
 
 
-def regmark_search_command(r: RegmarkSettings) -> str:
-    return f"TB123,{mm(r.height_mm)},{mm(r.width_mm)},{mm(r.inset_mm)},{mm(r.inset_mm)}"
+def regmark_search_command(r: RegmarkSettings, mat_offset_mm=(0.0, 0.0)) -> str:
+    """TB123,alto,ancho,top,left — top/left = dónde empezar a buscar la marca
+    superior izquierda respecto al origen de la máquina."""
+    top = r.inset_mm + mat_offset_mm[1]
+    left = r.inset_mm + mat_offset_mm[0]
+    return f"TB123,{mm(r.height_mm)},{mm(r.width_mm)},{mm(top)},{mm(left)}"
 
 
 def plot_commands(paths: Iterable[Polyline], bbox_mm: tuple[float, float, float, float],
@@ -304,12 +315,14 @@ class Cameo:
             self.send(c)
         check_abort()
 
-        offset = (0.0, 0.0)
+        mat_off = (settings.mat_offset_x_mm, settings.mat_offset_y_mm) if settings.mat else (0.0, 0.0)
+        # offset se RESTA a las coordenadas: con mat la hoja está más lejos del origen
+        offset = (-mat_off[0], -mat_off[1])
         if regmarks and regmarks.enabled:
             report(0.05, "Buscando marcas de registro")
             for c in regmark_commands(regmarks):
                 self.send(c)
-            resp = self.query(regmark_search_command(regmarks), 40000)
+            resp = self.query(regmark_search_command(regmarks, mat_off), 40000)
             if resp.strip() != b"0":
                 raise MachineError(f"No se encontraron las marcas de registro (resp={resp!r})")
             # Origen pasa a ser la marca superior izquierda (+ calibración)

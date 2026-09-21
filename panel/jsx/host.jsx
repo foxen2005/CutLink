@@ -174,18 +174,23 @@ function cameoGetDocInfo() {
     var regLayer = cameoFindLayer(doc, CAMEO_REGMARKS_LAYER);
     var regmarks = null;
     if (regLayer) {
-      var inset = 10;
-      // El inset se guarda en el note del primer item de la capa como "inset_mm=10"
+      var inset = 10, thick = 0.5;
+      // Se guardan en el note del cuadrado como "inset_mm=10;thick_mm=0.5"
       try {
         for (var k = 0; k < regLayer.pageItems.length; k++) {
           var note = regLayer.pageItems[k].note;
           if (note && note.indexOf("inset_mm=") === 0) {
-            inset = parseFloat(note.substring(9));
+            var parts = note.split(";");
+            for (var q = 0; q < parts.length; q++) {
+              var kv = parts[q].split("=");
+              if (kv[0] === "inset_mm") inset = parseFloat(kv[1]);
+              else if (kv[0] === "thick_mm") thick = parseFloat(kv[1]);
+            }
             break;
           }
         }
       } catch (e2) {}
-      regmarks = { inset_mm: inset };
+      regmarks = { inset_mm: inset, thick_mm: thick };
     }
 
     return cameoJson({
@@ -375,12 +380,14 @@ function cameoBlackRect(layer, x, y, w, h, note) {
   return r;
 }
 
-function cameoAddRegmarks(insetMm) {
+function cameoAddRegmarks(insetMm, thickMm) {
   try {
     if (app.documents.length === 0) return cameoError("No hay documento abierto");
     var doc = app.activeDocument;
     insetMm = parseFloat(insetMm);
     if (isNaN(insetMm) || insetMm <= 0) insetMm = 10;
+    thickMm = parseFloat(thickMm);
+    if (isNaN(thickMm) || thickMm <= 0) thickMm = 0.5;
 
     // Reemplazar capa existente
     var old = cameoFindLayer(doc, CAMEO_REGMARKS_LAYER);
@@ -390,13 +397,13 @@ function cameoAddRegmarks(insetMm) {
     var inset = cameoMmToPt(insetMm);
     var sq = cameoMmToPt(5);      // cuadrado 5 mm
     var arm = cameoMmToPt(20);    // brazo L 20 mm
-    var thick = cameoMmToPt(0.3); // grosor L 0.3 mm
+    var thick = cameoMmToPt(thickMm); // grosor de las L (la máquina lo busca con TB53)
 
     var layer = doc.layers.add();
     layer.name = CAMEO_REGMARKS_LAYER;
     layer.zOrder(ZOrderMethod.BRINGTOFRONT);
 
-    var note = "inset_mm=" + insetMm;
+    var note = "inset_mm=" + insetMm + ";thick_mm=" + thickMm;
 
     // Cuadrado superior izquierdo
     cameoBlackRect(layer, ab.left + inset, ab.top - inset, sq, sq, note);

@@ -57,6 +57,8 @@ def build_settings(material_id: str | None, overrides: dict | None) -> CutSettin
         blade_offset_mm=None if offset is None else float(offset),
         mat=int(m.get("mat", 1)),
         return_home=bool(m.get("return_home", True)),
+        mat_offset_x_mm=float(m.get("mat_offset_x_mm") or 0.0),
+        mat_offset_y_mm=float(m.get("mat_offset_y_mm") or 0.0),
     )
 
 
@@ -66,6 +68,8 @@ def build_regmarks(d: dict | None) -> RegmarkSettings | None:
     return RegmarkSettings(
         enabled=True,
         inset_mm=float(d.get("inset_mm", 10.0)),
+        thick_mm=float(d.get("thick_mm", 0.5)),
+        length_mm=float(d.get("length_mm", 20.0)),
         page_w_mm=float(d.get("page_w_mm", 0.0)),
         page_h_mm=float(d.get("page_h_mm", 0.0)),
         calib_x_mm=float(d.get("calib_x_mm", 0.0)),

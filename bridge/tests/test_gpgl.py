@@ -81,3 +81,15 @@ def test_end_without_home_moves_past_bbox():
 def test_regmark_search_command_geometry():
     r = RegmarkSettings(enabled=True, inset_mm=10, page_w_mm=210, page_h_mm=297)
     assert regmark_search_command(r) == "TB123,5540,3800,200,200"
+
+
+def test_regmark_search_adds_mat_offset():
+    r = RegmarkSettings(enabled=True, inset_mm=10, page_w_mm=210, page_h_mm=297)
+    assert regmark_search_command(r, (5.0, 15.0)) == "TB123,5540,3800,500,300"
+
+
+def test_regmark_setup_uses_thickness_and_length():
+    from bridge.gpgl import regmark_commands
+    r = RegmarkSettings(enabled=True, thick_mm=0.3, length_mm=20)
+    cmds = regmark_commands(r)
+    assert "TB51,400" in cmds and "TB53,6" in cmds

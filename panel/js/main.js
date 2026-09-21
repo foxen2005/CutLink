@@ -126,6 +126,10 @@
     chkPnc: $('chk-pnc'),
     pncBadge: $('pnc-badge'),
     inInset: $('in-inset'),
+    inThick: $('in-thick'),
+    matOffsetBox: $('mat-offset'),
+    inMatX: $('in-matx'),
+    inMatY: $('in-maty'),
     inCalX: $('in-calx'),
     inCalY: $('in-caly'),
     btnAddRegmarks: $('btn-add-regmarks'),
@@ -489,7 +493,30 @@
     var b = currentBlade();
     if (!b || b.type !== 'auto') delete o.depth;
     o.return_home = !!el.chkHome.checked;
+    if (o.mat) {
+      o.mat_offset_x_mm = parseFloat(el.inMatX.value) || 0;
+      o.mat_offset_y_mm = parseFloat(el.inMatY.value) || 0;
+    }
     return o;
+  }
+
+  // El origen de la hoja sobre el mat se calibra una vez: se recuerda por panel
+  function onMatChange() {
+    var withMat = parseInt(el.selMat.value, 10) > 0;
+    el.matOffsetBox.hidden = !withMat;
+    try { localStorage.setItem('cameocut.mat', el.selMat.value); } catch (e) {}
+  }
+  function saveMatOffset() {
+    try { localStorage.setItem('cameocut.matoffset', JSON.stringify({ x: el.inMatX.value, y: el.inMatY.value })); } catch (e) {}
+  }
+  function restoreMatSettings() {
+    try {
+      var m = localStorage.getItem('cameocut.mat');
+      if (m !== null) el.selMat.value = m;
+      var o = JSON.parse(localStorage.getItem('cameocut.matoffset') || 'null');
+      if (o) { el.inMatX.value = o.x; el.inMatY.value = o.y; }
+    } catch (e) {}
+    onMatChange();
   }
 
   // -- guardar / eliminar materiales propios --------------------------------
@@ -613,8 +640,10 @@
       });
       if (prevLayer && info.layers.indexOf(prevLayer) >= 0) el.selLayer.value = prevLayer;
       if (info.hasRegmarks) {
-        el.regmarksInfo.textContent = 'El documento tiene marcas (inset ' + (info.regmarks ? info.regmarks.inset_mm : '?') + ' mm).';
-        if (info.regmarks && info.regmarks.inset_mm) el.inInset.value = info.regmarks.inset_mm;
+        var rm = info.regmarks || {};
+        el.regmarksInfo.textContent = 'El documento tiene marcas (inset ' + (rm.inset_mm || '?') + ' mm, grosor ' + (rm.thick_mm || '?') + ' mm).';
+        if (rm.inset_mm) el.inInset.value = rm.inset_mm;
+        if (rm.thick_mm) el.inThick.value = rm.thick_mm;
       } else {
         el.regmarksInfo.textContent = 'El documento no tiene marcas.';
       }
@@ -704,6 +733,7 @@
     return {
       enabled: true,
       inset_mm: parseFloat(el.inInset.value) || 10,
+      thick_mm: parseFloat(el.inThick.value) || 0.5,
       page_w_mm: (docInfo && docInfo.artboard.w_mm) || exp.w_mm,
       page_h_mm: (docInfo && docInfo.artboard.h_mm) || exp.h_mm,
       calib_x_mm: parseFloat(el.inCalX.value) || 0,
@@ -734,6 +764,13 @@
       if (!res.ok) throw new Error(res.error || 'dry-run falló');
       lastDryRun = res;
       drawPreview(res);
+      if (res.stats.paths === 0) {
+        // Típico: el documento solo tiene imágenes colocadas (JPG/PNG) — no hay vectores
+        el.previewStats.textContent = 'No hay trazados para cortar. Las imágenes colocadas no se cortan: ' +
+          'dibuja las líneas de corte como trazados (p. ej. un rectángulo alrededor de cada etiqueta).';
+        logErr('Vista previa: 0 trazados (¿solo imágenes?)');
+        return;
+      }
       el.previewStats.textContent =
         'Trazos: ' + res.stats.paths + '   Longitud: ' + Number(res.stats.length_mm).toFixed(1) + ' mm\n' +
         'Tamaño: ' + Number(res.width_mm).toFixed(1) + ' × ' + Number(res.height_mm).toFixed(1) + ' mm' +
@@ -875,9 +912,10 @@
   // ---------------------------------------------------------------------------
   function addRegmarks() {
     var inset = parseFloat(el.inInset.value) || 10;
-    evalScript('cameoAddRegmarks(' + inset + ')').then(function (r) {
+    var thick = parseFloat(el.inThick.value) || 0.5;
+    evalScript('cameoAddRegmarks(' + inset + ',' + thick + ')').then(function (r) {
       if (!r.ok) throw new Error(r.error);
-      logOk('Marcas agregadas (inset ' + inset + ' mm) en capa "Regmarks"');
+      logOk('Marcas agregadas (inset ' + inset + ' mm, grosor ' + thick + ' mm) en capa "Regmarks"');
       return refreshDoc();
     }).catch(function (e) { logErr(e.message); });
   }
@@ -935,6 +973,9 @@
     el.btnBladeEdit.addEventListener('click', onBladeEditToggle);
     el.btnBladeSave.addEventListener('click', onBladeSave);
     el.btnBladeDelete.addEventListener('click', onBladeDelete);
+    el.selMat.addEventListener('change', onMatChange);
+    el.inMatX.addEventListener('change', saveMatOffset);
+    el.inMatY.addEventListener('change', saveMatOffset);
 
     // Ajustes ocultos tras el ☰: solo hacen falta la primera vez
     el.btnMenu.addEventListener('click', function () {
@@ -995,6 +1036,7 @@
     el.btnCut.disabled = true;
     clearPreview();
     bindEvents();
+    restoreMatSettings();
     log('Cameo Cut listo. Node ' + (hasNode ? 'OK' : 'no disponible') + '.');
     refreshDoc();
     startPolling();
