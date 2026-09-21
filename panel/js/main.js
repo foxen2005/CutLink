@@ -343,7 +343,11 @@
       return;
     }
     try {
-      var child = nodeCp.spawn(settings.pythonExe, ['-m', 'bridge.server'], {
+      // pythonw.exe no abre consola (Windows Terminal ignora windowsHide)
+      var exe = settings.pythonExe;
+      var exeW = exe.replace(/python\.exe$/i, 'pythonw.exe');
+      if (exeW !== exe) { try { if (nodeFs.existsSync(exeW)) exe = exeW; } catch (e0) {} }
+      var child = nodeCp.spawn(exe, ['-m', 'bridge.server'], {
         cwd: settings.bridgeRoot,
         detached: true,
         stdio: 'ignore',
@@ -353,7 +357,7 @@
         logErr('No se pudo lanzar el bridge: ' + err.message);
       });
       child.unref();
-      log('Bridge lanzado: ' + settings.pythonExe + ' -m bridge.server (cwd ' + settings.bridgeRoot + ')');
+      log('Bridge lanzado: ' + exe + ' -m bridge.server (cwd ' + settings.bridgeRoot + ')');
       setStatus('busy', 'Iniciando bridge…');
       setTimeout(poll, 1500);
       setTimeout(poll, 3500);
