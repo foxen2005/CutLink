@@ -115,6 +115,10 @@ input:disabled, select:disabled { opacity: 0.45; }
 .btn:active { background: #404040; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.small { padding: 3px 8px; font-size: 11px; }
+/* Botón ☰ de ajustes: sin fondo, solo el glifo */
+.btn.icon { background: transparent; border-color: transparent; padding: 2px 6px; font-size: 15px; line-height: 1; color: var(--fg-dim); }
+.btn.icon:hover, .btn.icon[aria-expanded="true"] { color: var(--fg); background: #4d4d4d; }
+#settings { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .btn-danger { background: #7a2e24; }
 .btn-danger:hover { background: #944034; }
 
@@ -205,9 +209,11 @@ details > *:not(summary) { margin-top: 4px; }
 }
 .progress-bar {
   height: 100%;
-  width: 0%;
+  width: 100%;
   background: var(--accent);
-  transition: width 0.3s ease;
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
 }
 .job-msg { flex: 1; font-size: 11px; color: var(--fg-dim); }
 

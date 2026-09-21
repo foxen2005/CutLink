@@ -84,6 +84,8 @@
     statusDot: $('status-dot'),
     statusText: $('status-text'),
     btnStartBridge: $('btn-start-bridge'),
+    btnMenu: $('btn-menu'),
+    settingsBox: $('settings'),
     cfgPython: $('cfg-python'),
     cfgRoot: $('cfg-root'),
     cfgUrl: $('cfg-url'),
@@ -261,12 +263,12 @@
     if (job.state === 'running') {
       el.jobBox.hidden = false;
       el.btnAbort.hidden = false;
-      el.progressBar.style.width = Math.round((job.progress || 0) * 100) + '%';
+      el.progressBar.style.transform = 'scaleX(' + (job.progress || 0) + ')';
       el.jobMsg.textContent = job.message || 'Cortando…';
     } else if (job.state === 'done' || job.state === 'error') {
       el.jobBox.hidden = false;
       el.btnAbort.hidden = true;
-      el.progressBar.style.width = job.state === 'done' ? '100%' : Math.round((job.progress || 0) * 100) + '%';
+      el.progressBar.style.transform = 'scaleX(' + (job.state === 'done' ? 1 : (job.progress || 0)) + ')';
       el.jobMsg.textContent = (job.state === 'done' ? 'Listo: ' : 'Error: ') + (job.message || '');
     } else {
       el.jobBox.hidden = true;
@@ -759,6 +761,12 @@
 
     el.selMaterial.addEventListener('change', applyMaterial);
     el.selBlade.addEventListener('change', updateDepthLabel);
+    // Ajustes ocultos tras el ☰: solo hacen falta la primera vez
+    el.btnMenu.addEventListener('click', function () {
+      var open = el.settingsBox.hidden;
+      el.settingsBox.hidden = !open;
+      el.btnMenu.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
 
     el.chkPnc.addEventListener('change', function () {
       el.pncBadge.hidden = !el.chkPnc.checked;

@@ -15,9 +15,10 @@
         <span class="dot" id="status-dot"></span>
         <span class="status-text" id="status-text">Bridge no iniciado</span>
         <button id="btn-start-bridge" class="btn small" title="Lanza el bridge Python en segundo plano">Iniciar bridge</button>
+        <button id="btn-menu" class="btn icon" title="Ajustes" aria-label="Ajustes" aria-expanded="false">&#9776;</button>
       </div>
-      <details id="settings">
-        <summary>Ajustes</summary>
+      <div id="settings" hidden>
+        <div class="card-title"><span>Ajustes</span></div>
         <div class="field">
           <label for="cfg-python">Ejecutable Python</label>
           <input type="text" id="cfg-python" placeholder="python">
@@ -34,7 +35,7 @@
           <button id="btn-save-settings" class="btn small">Guardar ajustes</button>
           <span class="hint">Node: <span id="node-status">?</span></span>
         </div>
-      </details>
+      </div>
     </section>
 
     <!-- ===== QUÉ CORTAR ===== -->
