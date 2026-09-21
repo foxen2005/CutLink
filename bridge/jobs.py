@@ -12,6 +12,7 @@ from dataclasses import dataclass, asdict
 
 from . import presets
 from .gpgl import Cameo, CutSettings, RegmarkSettings, JobAborted, MachineError
+from .imagetrace import add_image_outlines
 from .ordering import order_paths
 from .svgpaths import svg_to_polylines, to_dict, total_length_mm, SvgGeometry
 from .usbprint import DeviceNotFound, DeviceTimeout
@@ -79,7 +80,10 @@ def build_regmarks(d: dict | None) -> RegmarkSettings | None:
 
 
 def load_geometry(svg_path: str, only_stroke_color: str | None = None,
-                  tolerance_mm: float = 0.1) -> SvgGeometry:
+                  tolerance_mm: float = 0.1, images: str = "ignore",
+                  image_margin_mm: float = 0.0) -> SvgGeometry:
+    """images: 'ignore' | 'rect' | 'trace' — qué hacer con las imágenes colocadas
+    (no son vectores: o se ignoran, o su rectángulo, o su silueta auto-trazada)."""
     geom = svg_to_polylines(svg_path, tolerance_mm=tolerance_mm)
     if only_stroke_color:
         want = only_stroke_color.lower()
@@ -87,6 +91,12 @@ def load_geometry(svg_path: str, only_stroke_color: str | None = None,
         geom.bbox = _bbox(geom)
     # Descartamos geometría de las marcas de registro si vino en el SVG
     geom.paths = [p for p in geom.paths if "Regmarks" not in p.group_ids]
+    if images in ("rect", "trace"):
+        # Si el trazado falla (archivo de imagen no accesible, etc.) no ocultamos el error
+        try:
+            add_image_outlines(geom, svg_path, images, image_margin_mm, tolerance_mm)
+        except Exception as e:  # noqa: BLE001
+            raise ValueError(f"Contorno de imágenes ({images}): {type(e).__name__}: {e}") from e
     geom.paths = order_paths(geom.paths)
     geom.bbox = _bbox(geom)
     return geom
@@ -100,9 +110,11 @@ def _bbox(geom: SvgGeometry):
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def dry_run(svg_path: str, material_id=None, overrides=None, only_stroke_color=None) -> dict:
+def dry_run(svg_path: str, material_id=None, overrides=None, only_stroke_color=None,
+            images: str = "ignore", image_margin_mm: float = 0.0) -> dict:
     settings = build_settings(material_id, overrides)
-    geom = load_geometry(svg_path, only_stroke_color)
+    geom = load_geometry(svg_path, only_stroke_color, images=images,
+                         image_margin_mm=image_margin_mm)
     d = to_dict(geom)
     d["ok"] = True
     d["stats"] = {"paths": len(geom.paths), "length_mm": round(total_length_mm(geom), 1)}
@@ -154,7 +166,8 @@ class JobRunner:
                     "studio_running": studio, "error": str(e)}
 
     def start(self, svg_path: str, material_id=None, overrides=None,
-              only_stroke_color=None, print_and_cut=None) -> str:
+              only_stroke_color=None, print_and_cut=None,
+              images: str = "ignore", image_margin_mm: float = 0.0) -> str:
         with self._lock:
             if self.busy:
                 raise RuntimeError("Ya hay un trabajo en curso")
@@ -164,7 +177,8 @@ class JobRunner:
             settings = build_settings(material_id, overrides)
             settings.validate()
             regmarks = build_regmarks(print_and_cut)
-            geom = load_geometry(svg_path, only_stroke_color)
+            geom = load_geometry(svg_path, only_stroke_color, images=images,
+                                 image_margin_mm=image_margin_mm)
             if not geom.paths:
                 raise ValueError("El SVG no contiene trazados para cortar")
             if regmarks and (regmarks.page_w_mm <= 0 or regmarks.page_h_mm <= 0):

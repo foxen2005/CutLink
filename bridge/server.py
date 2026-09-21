@@ -77,11 +77,13 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/dry-run":
                 return self._json(200, dry_run(
                     data["svg_path"], data.get("material_id"),
-                    data.get("overrides"), data.get("only_stroke_color")))
+                    data.get("overrides"), data.get("only_stroke_color"),
+                    data.get("images", "ignore"), float(data.get("image_margin_mm") or 0)))
             if self.path == "/cut":
                 job_id = runner.start(
                     data["svg_path"], data.get("material_id"), data.get("overrides"),
-                    data.get("only_stroke_color"), data.get("print_and_cut"))
+                    data.get("only_stroke_color"), data.get("print_and_cut"),
+                    data.get("images", "ignore"), float(data.get("image_margin_mm") or 0))
                 return self._json(200, {"ok": True, "job_id": job_id})
             if self.path == "/abort":
                 runner.abort()

@@ -98,6 +98,8 @@
     chkColor: $('chk-color'),
     selColor: $('sel-color'),
     colorSwatch: $('color-swatch'),
+    selImages: $('sel-images'),
+    inImageMargin: $('in-image-margin'),
 
     selMaterial: $('sel-material'),
     inPressure: $('in-pressure'),
@@ -768,7 +770,9 @@
         svg_path: exp.path,
         material_id: el.selMaterial.value,
         overrides: buildOverrides(),
-        only_stroke_color: onlyStrokeColor()
+        only_stroke_color: onlyStrokeColor(),
+        images: el.selImages.value,
+        image_margin_mm: parseFloat(el.inImageMargin.value) || 0
       }, 30000);
     }).then(function (res) {
       if (!res.ok) throw new Error(res.error || 'dry-run falló');
@@ -776,8 +780,9 @@
       drawPreview(res);
       if (res.stats.paths === 0) {
         // Típico: el documento solo tiene imágenes colocadas (JPG/PNG) — no hay vectores
-        el.previewStats.textContent = 'No hay trazados para cortar. Las imágenes colocadas no se cortan: ' +
-          'dibuja las líneas de corte como trazados (p. ej. un rectángulo alrededor de cada etiqueta).';
+        el.previewStats.textContent = el.selImages.value === 'ignore'
+          ? 'No hay trazados para cortar. Las imágenes colocadas se están ignorando: elige "Silueta automática" o "Rectángulo" en Imágenes colocadas, o dibuja las líneas de corte como trazados.'
+          : 'No hay trazados ni imágenes para cortar en lo seleccionado.';
         logErr('Vista previa: 0 trazados (¿solo imágenes?)');
         return;
       }
@@ -878,7 +883,8 @@
       (ov.depth ? ' · Prof. ' + ov.depth : '') + ' · Herramienta ' + ov.tool + '\n' +
       'Mat: ' + ['Sin mat', '12x12', '12x24'][ov.mat] +
       (el.chkPnc.checked ? '\nPrint & Cut ACTIVO (inset ' + el.inInset.value + ' mm)' : '') +
-      (onlyStrokeColor() ? '\nSolo trazos ' + onlyStrokeColor() : '');
+      (onlyStrokeColor() ? '\nSolo trazos ' + onlyStrokeColor() : '') +
+      (el.selImages.value !== 'ignore' ? '\nImágenes: ' + (el.selImages.value === 'trace' ? 'silueta automática' : 'rectángulo') + ' +' + (parseFloat(el.inImageMargin.value) || 0) + ' mm' : '');
     if (!window.confirm(msg)) { log('Corte cancelado por el usuario'); return; }
 
     el.btnCut.disabled = true;
@@ -894,6 +900,8 @@
         material_id: el.selMaterial.value,
         overrides: ov,
         only_stroke_color: onlyStrokeColor(),
+        images: el.selImages.value,
+        image_margin_mm: parseFloat(el.inImageMargin.value) || 0,
         print_and_cut: printAndCutPayload(exp)
       }, 30000);
     }).then(function (res) {
@@ -985,6 +993,8 @@
     el.btnBladeSave.addEventListener('click', onBladeSave);
     el.btnBladeDelete.addEventListener('click', onBladeDelete);
     el.selMat.addEventListener('change', onMatChange);
+    el.selImages.addEventListener('change', function () { try { localStorage.setItem('cameocut.images', el.selImages.value); } catch (e) {} });
+    el.inImageMargin.addEventListener('change', function () { try { localStorage.setItem('cameocut.imagemargin', el.inImageMargin.value); } catch (e) {} });
     el.inInsetBottom.addEventListener('input', function () { insetBottomEdited = true; });
     el.inMatX.addEventListener('change', saveMatOffset);
     el.inMatY.addEventListener('change', saveMatOffset);
@@ -1049,6 +1059,10 @@
     clearPreview();
     bindEvents();
     restoreMatSettings();
+    try {
+      var im = localStorage.getItem('cameocut.images'); if (im) el.selImages.value = im;
+      var mg = localStorage.getItem('cameocut.imagemargin'); if (mg !== null) el.inImageMargin.value = mg;
+    } catch (e) {}
     log('Cameo Cut listo. Node ' + (hasNode ? 'OK' : 'no disponible') + '.');
     refreshDoc();
     startPolling();

@@ -51,6 +51,12 @@ if ($Uninstall) {
   exit 0
 }
 
+# --- Cerrar bridges en ejecución (el panel relanza uno con el código nuevo) ---
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*bridge.server*' } | ForEach-Object {
+  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  Write-Host "Bridge detenido (PID $($_.ProcessId))"
+}
+
 # --- PlayerDebugMode ---
 foreach ($v in 9..12) {
   $key = "HKCU:\Software\Adobe\CSXS.$v"
