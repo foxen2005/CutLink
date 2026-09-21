@@ -174,8 +174,8 @@ function cameoGetDocInfo() {
     var regLayer = cameoFindLayer(doc, CAMEO_REGMARKS_LAYER);
     var regmarks = null;
     if (regLayer) {
-      var inset = 10, thick = 0.5;
-      // Se guardan en el note del cuadrado como "inset_mm=10;thick_mm=0.5"
+      var inset = 10, thick = 0.5, insetBottom = null;
+      // Se guardan en el note del cuadrado como "inset_mm=10;thick_mm=0.5;inset_bottom_mm=25"
       try {
         for (var k = 0; k < regLayer.pageItems.length; k++) {
           var note = regLayer.pageItems[k].note;
@@ -185,12 +185,13 @@ function cameoGetDocInfo() {
               var kv = parts[q].split("=");
               if (kv[0] === "inset_mm") inset = parseFloat(kv[1]);
               else if (kv[0] === "thick_mm") thick = parseFloat(kv[1]);
+              else if (kv[0] === "inset_bottom_mm") insetBottom = parseFloat(kv[1]);
             }
             break;
           }
         }
       } catch (e2) {}
-      regmarks = { inset_mm: inset, thick_mm: thick };
+      regmarks = { inset_mm: inset, thick_mm: thick, inset_bottom_mm: insetBottom };
     }
 
     return cameoJson({
@@ -380,7 +381,7 @@ function cameoBlackRect(layer, x, y, w, h, note) {
   return r;
 }
 
-function cameoAddRegmarks(insetMm, thickMm) {
+function cameoAddRegmarks(insetMm, thickMm, insetBottomMm) {
   try {
     if (app.documents.length === 0) return cameoError("No hay documento abierto");
     var doc = app.activeDocument;
@@ -388,6 +389,9 @@ function cameoAddRegmarks(insetMm, thickMm) {
     if (isNaN(insetMm) || insetMm <= 0) insetMm = 10;
     thickMm = parseFloat(thickMm);
     if (isNaN(thickMm) || thickMm <= 0) thickMm = 0.5;
+    // Sin mat la máquina necesita más margen abajo (rodillos): la marca inferior va a 25 mm
+    insetBottomMm = parseFloat(insetBottomMm);
+    if (isNaN(insetBottomMm) || insetBottomMm <= 0) insetBottomMm = insetMm;
 
     // Reemplazar capa existente
     var old = cameoFindLayer(doc, CAMEO_REGMARKS_LAYER);
@@ -395,6 +399,7 @@ function cameoAddRegmarks(insetMm, thickMm) {
 
     var ab = cameoActiveArtboardRect(doc);
     var inset = cameoMmToPt(insetMm);
+    var insetB = cameoMmToPt(insetBottomMm);
     var sq = cameoMmToPt(5);      // cuadrado 5 mm
     var arm = cameoMmToPt(20);    // brazo L 20 mm
     var thick = cameoMmToPt(thickMm); // grosor de las L (la máquina lo busca con TB53)
@@ -403,7 +408,7 @@ function cameoAddRegmarks(insetMm, thickMm) {
     layer.name = CAMEO_REGMARKS_LAYER;
     layer.zOrder(ZOrderMethod.BRINGTOFRONT);
 
-    var note = "inset_mm=" + insetMm + ";thick_mm=" + thickMm;
+    var note = "inset_mm=" + insetMm + ";thick_mm=" + thickMm + ";inset_bottom_mm=" + insetBottomMm;
 
     // Cuadrado superior izquierdo
     cameoBlackRect(layer, ab.left + inset, ab.top - inset, sq, sq, note);
@@ -414,11 +419,11 @@ function cameoAddRegmarks(insetMm, thickMm) {
     //   vertical: x = right - inset - thick, desde top - inset hacia abajo arm
     cameoBlackRect(layer, ab.right - inset - thick, ab.top - inset, thick, arm, null);
 
-    // L inferior izquierda: brazos hacia la derecha y hacia arriba
-    //   horizontal: desde (left + inset), y = bottom + inset + thick (top del rect)
-    cameoBlackRect(layer, ab.left + inset, ab.bottom + inset + thick, arm, thick, null);
-    //   vertical: x = left + inset, top = bottom + inset + arm
-    cameoBlackRect(layer, ab.left + inset, ab.bottom + inset + arm, thick, arm, null);
+    // L inferior izquierda: brazos hacia la derecha y hacia arriba, a insetB del borde inferior
+    //   horizontal: desde (left + inset), y = bottom + insetB + thick (top del rect)
+    cameoBlackRect(layer, ab.left + inset, ab.bottom + insetB + thick, arm, thick, null);
+    //   vertical: x = left + inset, top = bottom + insetB + arm
+    cameoBlackRect(layer, ab.left + inset, ab.bottom + insetB + arm, thick, arm, null);
 
     layer.locked = true;
     return cameoJson({ ok: true });

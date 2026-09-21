@@ -83,6 +83,12 @@ def test_regmark_search_command_geometry():
     assert regmark_search_command(r) == "TB123,5540,3800,200,200"
 
 
+def test_regmark_bottom_inset_reduces_height():
+    r = RegmarkSettings(enabled=True, inset_mm=10, inset_bottom_mm=25, page_w_mm=210, page_h_mm=297)
+    assert r.height_mm == 262
+    assert regmark_search_command(r) == "TB123,5240,3800,200,200"
+
+
 def test_regmark_search_adds_mat_offset():
     r = RegmarkSettings(enabled=True, inset_mm=10, page_w_mm=210, page_h_mm=297)
     assert regmark_search_command(r, (5.0, 15.0)) == "TB123,5540,3800,500,300"

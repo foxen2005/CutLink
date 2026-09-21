@@ -127,6 +127,7 @@
     pncBadge: $('pnc-badge'),
     inInset: $('in-inset'),
     inThick: $('in-thick'),
+    inInsetBottom: $('in-inset-bottom'),
     matOffsetBox: $('mat-offset'),
     inMatX: $('in-matx'),
     inMatY: $('in-maty'),
@@ -505,9 +506,12 @@
   }
 
   // El origen de la hoja sobre el mat se calibra una vez: se recuerda por panel
+  var insetBottomEdited = false;
   function onMatChange() {
     var withMat = parseInt(el.selMat.value, 10) > 0;
     el.matOffsetBox.hidden = !withMat;
+    // Sin mat la marca inferior va a 25 mm del borde; con mat, igual que el inset
+    if (!insetBottomEdited) el.inInsetBottom.value = withMat ? (parseFloat(el.inInset.value) || 10) : 25;
     try { localStorage.setItem('cameocut.mat', el.selMat.value); } catch (e) {}
   }
   function saveMatOffset() {
@@ -648,6 +652,7 @@
         el.regmarksInfo.textContent = 'El documento tiene marcas (inset ' + (rm.inset_mm || '?') + ' mm, grosor ' + (rm.thick_mm || '?') + ' mm).';
         if (rm.inset_mm) el.inInset.value = rm.inset_mm;
         if (rm.thick_mm) el.inThick.value = rm.thick_mm;
+        if (rm.inset_bottom_mm) { el.inInsetBottom.value = rm.inset_bottom_mm; insetBottomEdited = true; }
       } else {
         el.regmarksInfo.textContent = 'El documento no tiene marcas.';
       }
@@ -738,6 +743,7 @@
       enabled: true,
       inset_mm: parseFloat(el.inInset.value) || 10,
       thick_mm: parseFloat(el.inThick.value) || 0.5,
+      inset_bottom_mm: parseFloat(el.inInsetBottom.value) || null,
       page_w_mm: (docInfo && docInfo.artboard.w_mm) || exp.w_mm,
       page_h_mm: (docInfo && docInfo.artboard.h_mm) || exp.h_mm,
       calib_x_mm: parseFloat(el.inCalX.value) || 0,
@@ -917,9 +923,10 @@
   function addRegmarks() {
     var inset = parseFloat(el.inInset.value) || 10;
     var thick = parseFloat(el.inThick.value) || 0.5;
-    evalScript('cameoAddRegmarks(' + inset + ',' + thick + ')').then(function (r) {
+    var insetB = parseFloat(el.inInsetBottom.value) || inset;
+    evalScript('cameoAddRegmarks(' + inset + ',' + thick + ',' + insetB + ')').then(function (r) {
       if (!r.ok) throw new Error(r.error);
-      logOk('Marcas agregadas (inset ' + inset + ' mm, grosor ' + thick + ' mm) en capa "Regmarks"');
+      logOk('Marcas agregadas (inset ' + inset + ' mm, inferior ' + insetB + ' mm, grosor ' + thick + ' mm) en capa "Regmarks"');
       return refreshDoc();
     }).catch(function (e) { logErr(e.message); });
   }
@@ -978,6 +985,7 @@
     el.btnBladeSave.addEventListener('click', onBladeSave);
     el.btnBladeDelete.addEventListener('click', onBladeDelete);
     el.selMat.addEventListener('change', onMatChange);
+    el.inInsetBottom.addEventListener('input', function () { insetBottomEdited = true; });
     el.inMatX.addEventListener('change', saveMatOffset);
     el.inMatY.addEventListener('change', saveMatOffset);
 

@@ -102,6 +102,7 @@ class RegmarkSettings:
     (sin contar el grosor), top/left = inset desde el borde de la hoja."""
     enabled: bool = False
     inset_mm: float = 10.0
+    inset_bottom_mm: float | None = None   # sin mat la marca inferior va a 25 mm; None = igual que inset
     thick_mm: float = 0.5         # grosor de las líneas de las marcas (TB53)
     length_mm: float = 20.0       # largo del brazo de las L (TB51)
     page_w_mm: float = 0.0
@@ -110,8 +111,12 @@ class RegmarkSettings:
     calib_y_mm: float = 0.0
 
     @property
+    def bottom_mm(self) -> float:
+        return self.inset_mm if self.inset_bottom_mm is None else self.inset_bottom_mm
+
+    @property
     def height_mm(self) -> float:
-        return self.page_h_mm - 2 * self.inset_mm
+        return self.page_h_mm - self.inset_mm - self.bottom_mm
 
     @property
     def width_mm(self) -> float:

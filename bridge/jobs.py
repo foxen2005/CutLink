@@ -68,6 +68,7 @@ def build_regmarks(d: dict | None) -> RegmarkSettings | None:
     return RegmarkSettings(
         enabled=True,
         inset_mm=float(d.get("inset_mm", 10.0)),
+        inset_bottom_mm=None if d.get("inset_bottom_mm") in (None, "") else float(d["inset_bottom_mm"]),
         thick_mm=float(d.get("thick_mm", 0.5)),
         length_mm=float(d.get("length_mm", 20.0)),
         page_w_mm=float(d.get("page_w_mm", 0.0)),
