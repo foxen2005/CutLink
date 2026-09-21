@@ -35,26 +35,35 @@ def _point_in_polygon(pt, poly) -> bool:
     return inside
 
 
-def _contains(outer: Polyline, inner: Polyline) -> bool:
-    """outer contiene a inner: bbox de inner dentro del de outer y su primer
-    punto dentro del polígono (suficiente para trazados que no se cruzan)."""
+def _sample_points(pts):
+    """Puntos de prueba de un trazado: primero, medio y centroide de vértices.
+    Un punto solo puede caer justo sobre el borde del contenedor (círculo
+    inscrito en un cuadrado); con tres y mayoría se evita."""
+    n = len(pts)
+    cx = sum(p[0] for p in pts) / n
+    cy = sum(p[1] for p in pts) / n
+    return [pts[0], pts[n // 2], (cx, cy)]
+
+
+def _contains(outer: Polyline, ob, inner: Polyline, ib) -> bool:
+    """outer contiene a inner (ob/ib = bboxes precalculados)."""
     if not outer.closed or len(outer.points) < 3:
         return False
-    ob = _bbox(outer.points)
-    ib = _bbox(inner.points)
     if not (ob[0] <= ib[0] and ob[1] <= ib[1] and ib[2] <= ob[2] and ib[3] <= ob[3]):
         return False
-    if ob == ib:
+    if outer.points == inner.points:      # mismo trazado duplicado
         return False
-    return _point_in_polygon(inner.points[0], outer.points)
+    votes = sum(1 for s in _sample_points(inner.points) if _point_in_polygon(s, outer.points))
+    return votes >= 2
 
 
 def depth_of_each(paths: list[Polyline]) -> list[int]:
     """Número de trazados cerrados que contienen a cada uno (0 = exterior)."""
+    boxes = [_bbox(p.points) for p in paths]
     depths = [0] * len(paths)
     for i, p in enumerate(paths):
         for j, q in enumerate(paths):
-            if i != j and _contains(q, p):
+            if i != j and _contains(q, boxes[j], p, boxes[i]):
                 depths[i] += 1
     return depths
 

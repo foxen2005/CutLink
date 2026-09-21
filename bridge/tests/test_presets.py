@@ -58,7 +58,20 @@ def test_autoblade_material_keeps_depth():
     assert s.blade == "auto" and s.depth == 4 and s.blade_offset_mm == 0.0
 
 
-def test_delete_blade_only_custom():
-    assert not presets.delete_blade("ratchet")
+def test_delete_blade_only_custom_and_unused():
+    with pytest.raises(ValueError):          # "ratchet" la usan materiales base
+        presets.delete_blade("ratchet")
     presets.save_blade({"name": "Temp", "type": "pen"})
     assert presets.delete_blade("temp")
+    presets.save_blade({"name": "Usada", "type": "pen"})
+    presets.save_material({"name": "M", "pressure": 5, "speed": 5, "blade_id": "usada"})
+    with pytest.raises(ValueError):
+        presets.delete_blade("usada")
+
+
+def test_new_preset_never_overwrites_builtin_without_explicit_id():
+    b = presets.save_blade({"name": "Pen", "type": "ratchet", "offset_mm": 0.3})
+    assert b["id"] == "pen_2"
+    assert presets.find_blade("pen")["type"] == "pen"     # el base sigue intacto
+    m = presets.save_material({"name": "Vinilo", "pressure": 5, "speed": 5, "blade_id": "ratchet"})
+    assert m["id"] == "vinilo_2"

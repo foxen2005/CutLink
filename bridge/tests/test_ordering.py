@@ -26,6 +26,29 @@ def test_nearest_neighbour_within_level():
     assert ids == ["a", "c", "b"]   # arranca en el origen y va al más cercano
 
 
+def test_inscribed_circle_counts_as_inside():
+    import math
+    sq = square(0, 0, 20, "sq")
+    circ = [(10 + 10 * math.cos(t * 2 * math.pi / 32), 10 + 10 * math.sin(t * 2 * math.pi / 32))
+            for t in range(33)]
+    circle = Polyline(points=circ, closed=True, stroke=None, fill=None, id="circle", group_ids=[])
+    assert [p.id for p in order_paths([sq, circle])] == ["circle", "sq"]
+
+
+def test_duplicate_path_is_not_its_own_container():
+    a = square(0, 0, 10, "a")
+    b = square(0, 0, 10, "b")
+    assert depth_of_each([a, b]) == [0, 0]
+
+
+def test_many_paths_is_fast():
+    import time
+    paths = [square((i % 40) * 30, (i // 40) * 30, 20, str(i)) for i in range(800)]
+    t0 = time.perf_counter()
+    order_paths(paths)
+    assert time.perf_counter() - t0 < 3.0
+
+
 def test_open_path_never_contains():
     line = Polyline(points=[(0, 0), (100, 0)], closed=False, stroke=None, fill=None, id="l", group_ids=[])
     inner = square(10, 10, 5, "s")

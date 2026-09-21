@@ -531,7 +531,8 @@
     var m = currentMaterial();
     if (!m || !m.custom) return;
     if (!window.confirm('¿Eliminar el material "' + m.name + '"?')) return;
-    bridgePost('/materials/delete', { id: m.id }).then(function () {
+    bridgePost('/materials/delete', { id: m.id }).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'No se pudo eliminar');
       logOk('Material eliminado');
       el.selMaterial.value = '';
       loadMaterials();
@@ -560,8 +561,8 @@
     var name = el.blName.value.trim();
     if (!name) { logErr('La cuchilla necesita un nombre'); return; }
     var payload = {
-      // Si se edita un perfil propio se conserva su id; un base se guarda como perfil nuevo
-      id: (b && b.custom && b.name === name) ? b.id : undefined,
+      // Un perfil propio se edita en sitio (aunque cambie el nombre); un base se guarda como perfil nuevo
+      id: (b && b.custom) ? b.id : undefined,
       name: name, type: el.blType.value,
       offset_mm: parseFloat(el.blOffset.value) || 0,
       tool: parseInt(el.blTool.value, 10) || 1
@@ -580,7 +581,8 @@
     var b = currentBlade();
     if (!b || !b.custom) return;
     if (!window.confirm('¿Eliminar la cuchilla "' + b.name + '"?')) return;
-    bridgePost('/blades/delete', { id: b.id }).then(function () {
+    bridgePost('/blades/delete', { id: b.id }).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'No se pudo eliminar');
       logOk('Cuchilla eliminada');
       return loadBlades().then(onBladeChange);
     }).catch(function (e) { logErr(e.message); });

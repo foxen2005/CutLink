@@ -51,6 +51,17 @@ def slugify(name: str) -> str:
     return s or "preset"
 
 
+def _unique_id(name: str, taken: set[str]) -> str:
+    """Slug del nombre que no choque con ids existentes (base o propios): sin
+    id explícito nunca se reemplaza otro preset por accidente."""
+    base = slugify(name)
+    cand, n = base, 2
+    while cand in taken:
+        cand = f"{base}_{n}"
+        n += 1
+    return cand
+
+
 def _merge(builtin: list[dict], user: list[dict]) -> list[dict]:
     out = {b["id"]: dict(b, custom=False) for b in builtin}
     for u in user:
@@ -83,8 +94,8 @@ def validate_blade(b: dict) -> dict:
     tool = int(b.get("tool", 1))
     if tool not in (1, 2):
         raise ValueError("tool debe ser 1 o 2")
-    return {"id": str(b.get("id") or slugify(name)), "name": name, "type": btype,
-            "offset_mm": offset, "tool": tool}
+    bid = str(b.get("id") or _unique_id(name, {x["id"] for x in list_blades()}))
+    return {"id": bid, "name": name, "type": btype, "offset_mm": offset, "tool": tool}
 
 
 def save_blade(b: dict) -> dict:
@@ -97,6 +108,9 @@ def save_blade(b: dict) -> dict:
 
 
 def delete_blade(blade_id: str) -> bool:
+    users = [m["name"] for m in list_materials() if m.get("blade_id") == blade_id]
+    if users:
+        raise ValueError("La cuchilla está en uso por: " + ", ".join(users))
     with _lock:
         d = _read_user()
         before = len(d["blades"])
@@ -140,7 +154,7 @@ def validate_material(m: dict) -> dict:
     if find_blade(blade_id) is None:
         raise ValueError(f"Cuchilla desconocida: {blade_id}")
     return {
-        "id": str(m.get("id") or slugify(name)),
+        "id": str(m.get("id") or _unique_id(name, {x["id"] for x in list_materials()})),
         "name": name,
         "pressure": num("pressure", 1, 33),
         "speed": num("speed", 1, 30),
