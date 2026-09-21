@@ -130,6 +130,7 @@
     bladeHint: $('blade-hint'),
 
     chkPnc: $('chk-pnc'),
+    pncManualBox: $('pnc-manual-box'),
     pncBadge: $('pnc-badge'),
     inInset: $('in-inset'),
     inThick: $('in-thick'),
@@ -778,12 +779,18 @@
     });
   }
 
+  function pncMode() {
+    var r = document.querySelector('input[name="pnc-mode"]:checked');
+    return r ? r.value : 'auto';
+  }
+
   function printAndCutPayload(exp) {
     if (!el.chkPnc.checked) {
       return { enabled: false, inset_mm: 0, page_w_mm: exp.w_mm, page_h_mm: exp.h_mm, calib_x_mm: 0, calib_y_mm: 0 };
     }
     return {
       enabled: true,
+      manual: pncMode() === 'manual',
       inset_mm: parseFloat(el.inInset.value) || 10,
       thick_mm: parseFloat(el.inThick.value) || 0.5,
       inset_bottom_mm: parseFloat(el.inInsetBottom.value) || null,
@@ -924,7 +931,7 @@
       'Presión ' + ov.pressure + ' · Velocidad ' + ov.speed + ' · Pasadas ' + ov.passes +
       (ov.depth ? ' · Prof. ' + ov.depth : '') + ' · Herramienta ' + ov.tool + '\n' +
       'Mat: ' + ['Sin mat', '12x12', '12x24'][ov.mat] +
-      (el.chkPnc.checked ? '\nPrint & Cut ACTIVO (inset ' + el.inInset.value + ' mm)' : '') +
+      (el.chkPnc.checked ? '\nPrint & Cut ACTIVO (' + (pncMode() === 'manual' ? 'MANUAL: cuchilla sobre el cuadrado' : 'automático') + ', inset ' + el.inInset.value + ' mm)' : '') +
       (onlyStrokeColor() ? '\nSolo trazos ' + onlyStrokeColor() : '') +
       (el.selImages.value !== 'ignore' ? '\nImágenes: ' + (el.selImages.value === 'trace' ? 'silueta automática' : 'rectángulo') + ' +' + (parseFloat(el.inImageMargin.value) || 0) + ' mm' : '');
     if (!window.confirm(msg)) { log('Corte cancelado por el usuario'); return; }
@@ -1074,6 +1081,12 @@
       try { localStorage.setItem('cameocut.pnc', el.chkPnc.checked ? '1' : '0'); } catch (e) {}
     });
     el.btnAddRegmarks.addEventListener('click', addRegmarks);
+    document.querySelectorAll('input[name="pnc-mode"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        el.pncManualBox.hidden = pncMode() !== 'manual';
+        try { localStorage.setItem('cameocut.pncmode', pncMode()); } catch (e) {}
+      });
+    });
     el.btnRemoveRegmarks.addEventListener('click', removeRegmarks);
 
     el.btnPreview.addEventListener('click', doPreview);
@@ -1107,6 +1120,12 @@
     clearPreview();
     bindEvents();
     restoreMatSettings();
+    try {
+      var pm = localStorage.getItem('cameocut.pncmode');
+      var pr = pm && document.querySelector('input[name="pnc-mode"][value="' + pm + '"]');
+      if (pr) pr.checked = true;
+    } catch (e) {}
+    el.pncManualBox.hidden = pncMode() !== 'manual';
     try {
       var im = localStorage.getItem('cameocut.images'); if (im) el.selImages.value = im;
       var mg = localStorage.getItem('cameocut.imagemargin'); if (mg !== null) el.inImageMargin.value = mg;

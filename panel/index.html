@@ -192,6 +192,11 @@
         <span class="badge" id="pnc-badge" hidden>activo</span>
       </summary>
       <label class="check"><input type="checkbox" id="chk-pnc"> Activar Print &amp; Cut</label>
+      <div class="radio-group">
+        <label class="radio"><input type="radio" name="pnc-mode" value="auto" checked> Automático (la máquina busca el cuadrado)</label>
+        <label class="radio"><input type="radio" name="pnc-mode" value="manual"> Manual (poner la cuchilla sobre el cuadrado)</label>
+      </div>
+      <div id="pnc-manual-box" class="hint" hidden>Con las flechas de la pantalla de la Cameo deja la cuchilla justo encima del cuadrado negro y pulsa CORTAR.</div>
       <div class="grid2">
         <div class="field">
           <label for="in-inset">Inset (mm)</label>

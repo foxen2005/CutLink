@@ -10,6 +10,7 @@ Endpoints (JSON):
   POST /cut        {svg_path, material_id, overrides, only_stroke_color, print_and_cut}
   GET  /job        progreso del trabajo actual
   POST /abort
+  POST /jog        {dx_mm, dy_mm} mueve el carro en relativo (registro manual)
   GET  /blades                 perfiles de cuchilla (base + propios)
   POST /materials, /blades     guardar preset propio (body = preset)
   POST /materials/delete, /blades/delete   {id}
@@ -94,6 +95,9 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("only_stroke_color"), data.get("print_and_cut"),
                     data.get("images", "ignore"), float(data.get("image_margin_mm") or 0))
                 return self._json(200, {"ok": True, "job_id": job_id})
+            if self.path == "/jog":
+                runner.jog(float(data.get("dx_mm") or 0), float(data.get("dy_mm") or 0))
+                return self._json(200, {"ok": True})
             if self.path == "/abort":
                 runner.abort()
                 return self._json(200, {"ok": True})

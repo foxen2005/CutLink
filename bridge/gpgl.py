@@ -101,6 +101,7 @@ class RegmarkSettings:
     """Print & Cut. Distancias en mm; height/width = distancia entre marcas
     (sin contar el grosor), top/left = inset desde el borde de la hoja."""
     enabled: bool = False
+    manual: bool = False          # True: el usuario ya puso la cuchilla sobre el cuadrado (TB23)
     inset_mm: float = 10.0
     inset_bottom_mm: float | None = None   # sin mat la marca inferior va a 25 mm; None = igual que inset
     thick_mm: float = 0.5         # grosor de las líneas de las marcas (TB53)
@@ -157,8 +158,12 @@ def regmark_commands(r: RegmarkSettings) -> list[str]:
 
 
 def regmark_search_command(r: RegmarkSettings, mat_offset_mm=(0.0, 0.0)) -> str:
-    """TB123,alto,ancho,top,left — top/left = dónde empezar a buscar la marca
-    superior izquierda respecto al origen de la máquina."""
+    """Automático: TB123,alto,ancho,top,left — top/left = dónde empezar a buscar
+    la marca superior izquierda respecto al origen de la máquina.
+    Manual: TB23,alto,ancho — la máquina parte de la posición actual del carro
+    (el usuario dejó la cuchilla sobre el cuadrado)."""
+    if r.manual:
+        return f"TB23,{mm(r.height_mm)},{mm(r.width_mm)}"
     top = r.inset_mm + mat_offset_mm[1]
     left = r.inset_mm + mat_offset_mm[0]
     return f"TB123,{mm(r.height_mm)},{mm(r.width_mm)},{mm(top)},{mm(left)}"
@@ -290,6 +295,12 @@ class Cameo:
             if time.monotonic() - t0 > timeout_s:
                 return st
             time.sleep(0.5)
+
+    def jog(self, dx_mm: float, dy_mm: float) -> None:
+        """Mueve el carro/papel en relativo (herramienta arriba). Sirve para
+        posicionar la cuchilla sobre la marca de registro en modo manual."""
+        self.send("FN0")
+        self.send(f"O{mm(dy_mm)},{mm(dx_mm)}")
 
     # -- trabajo completo ------------------------------------------------------
     def run_job(self, paths: list[Polyline], bbox_mm, settings: CutSettings,

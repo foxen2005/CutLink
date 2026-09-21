@@ -67,6 +67,7 @@ def build_regmarks(d: dict | None) -> RegmarkSettings | None:
         return None
     return RegmarkSettings(
         enabled=True,
+        manual=bool(d.get("manual", False)),
         inset_mm=float(d.get("inset_mm", 10.0)),
         inset_bottom_mm=None if d.get("inset_bottom_mm") in (None, "") else float(d["inset_bottom_mm"]),
         thick_mm=float(d.get("thick_mm", 0.5)),
@@ -201,6 +202,15 @@ class JobRunner:
 
     def abort(self) -> None:
         self._abort.set()
+
+    def jog(self, dx_mm: float, dy_mm: float) -> None:
+        """Mueve el carro en relativo (para posicionar sobre la marca en modo manual)."""
+        if self.busy:
+            raise RuntimeError("Hay un trabajo en curso")
+        dx = max(-300.0, min(300.0, float(dx_mm)))
+        dy = max(-300.0, min(300.0, float(dy_mm)))
+        with Cameo() as cam:
+            cam.jog(dx, dy)
 
     def _run(self, geom: SvgGeometry, settings: CutSettings, regmarks):
         def progress(p, msg):
