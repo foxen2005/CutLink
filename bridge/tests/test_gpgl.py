@@ -69,8 +69,12 @@ def test_plot_offset_shifts_to_regmark_origin():
     assert "D100,300" in cmds
 
 
-def test_end_moves_past_bbox_and_resets():
-    cmds = end_commands((0, 0, 50, 50))
+def test_end_returns_home_by_default():
+    assert end_commands((0, 0, 50, 50)) == ["M0,0", "SO0", "FN0"]
+
+
+def test_end_without_home_moves_past_bbox():
+    cmds = end_commands((0, 0, 50, 50), return_home=False)
     assert cmds == ["M1200,0", "SO0", "FN0"]
 
 

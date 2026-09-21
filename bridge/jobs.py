@@ -56,6 +56,7 @@ def build_settings(material_id: str | None, overrides: dict | None) -> CutSettin
         blade=str(m.get("blade", "auto")),
         blade_offset_mm=None if m.get("blade_offset") in (None, "") else float(m["blade_offset"]),
         mat=int(m.get("mat", 1)),
+        return_home=bool(m.get("return_home", True)),
     )
 
 

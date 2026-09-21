@@ -106,6 +106,7 @@
     inPasses: $('in-passes'),
     selTool: $('sel-tool'),
     selMat: $('sel-mat'),
+    chkHome: $('chk-home'),
 
     chkPnc: $('chk-pnc'),
     pncBadge: $('pnc-badge'),
@@ -416,6 +417,7 @@
     o.mat = parseInt(el.selMat.value, 10) || 0;
     o.blade = el.selBlade.value || 'ratchet';
     if (o.blade !== 'auto') delete o.depth;
+    o.return_home = !!el.chkHome.checked;
     return o;
   }
 
@@ -577,6 +579,15 @@
     });
   }
 
+  // El fondo del canvas es #1c1c1c: un trazo negro de Illustrator (#231f20, muy
+  // común) sería invisible. Si el color es oscuro, se dibuja en el color de corte.
+  function previewColor(hex) {
+    if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return '#ff5252';
+    var r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+    var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return lum < 90 ? '#ff5252' : hex;
+  }
+
   function drawPreview(res) {
     var canvas = el.canvas;
     var ctx = canvas.getContext('2d');
@@ -617,7 +628,7 @@
     (res.paths || []).forEach(function (p) {
       var pts = p.points || [];
       if (pts.length < 2) return;
-      ctx.strokeStyle = (p.stroke && /^#[0-9a-f]{6}$/i.test(p.stroke)) ? p.stroke : '#e8e8e8';
+      ctx.strokeStyle = previewColor(p.stroke);
       ctx.beginPath();
       ctx.moveTo(ox + pts[0][0] * scale, oy + pts[0][1] * scale);
       for (var i = 1; i < pts.length; i++) ctx.lineTo(ox + pts[i][0] * scale, oy + pts[i][1] * scale);

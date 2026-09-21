@@ -64,6 +64,7 @@ class CutSettings:
     mat: int = 1                  # ver MAT_TYPES
     lift: bool = False            # levantar herramienta entre trazos (papel grueso)
     sharpen_corners: bool = False
+    return_home: bool = True      # al terminar, devolver el papel/carro al origen
 
     def __post_init__(self):
         if self.blade_offset_mm is None:
@@ -175,9 +176,12 @@ def plot_commands(paths: Iterable[Polyline], bbox_mm: tuple[float, float, float,
 
 
 def end_commands(bbox_mm: tuple[float, float, float, float], offset_mm=(0.0, 0.0),
-                 end_paper_offset_mm: float = 10.0) -> list[str]:
+                 end_paper_offset_mm: float = 10.0, return_home: bool = True) -> list[str]:
+    """Fin de trabajo. Con return_home el papel vuelve al origen; si no, queda
+    avanzado 10 mm más allá de lo cortado (para retirar la pieza)."""
     _, _, _, maxy = bbox_mm
-    return [f"M{mm(maxy - offset_mm[1] + end_paper_offset_mm)},0", "SO0", "FN0"]
+    park = "M0,0" if return_home else f"M{mm(maxy - offset_mm[1] + end_paper_offset_mm)},0"
+    return [park, "SO0", "FN0"]
 
 
 # --------------------------------------------------------------------------
@@ -325,7 +329,7 @@ class Cameo:
                 block = []
                 check_abort()
                 report(0.1 + 0.85 * (i + 1) / total, f"Cortando {i + 1}/{total}")
-        for c in end_commands(bbox_mm, offset):
+        for c in end_commands(bbox_mm, offset, return_home=settings.return_home):
             self.send(c)
         # Esperar a que termine de moverse
         report(0.97, "Terminando")
