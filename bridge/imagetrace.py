@@ -91,9 +91,10 @@ def _contours_px(mask: np.ndarray, margin_px: float, simplify_px: float) -> list
 
 
 def trace_images(svg_path: str, margin_mm: float = 0.0, tolerance_mm: float = 0.1,
-                 white_threshold: int = 240) -> list[Polyline]:
+                 white_threshold: int = 240, warnings: list[str] | None = None) -> list[Polyline]:
     """Polilíneas (mm, origen sup. izq. del viewBox) de las siluetas de todas las
-    imágenes del SVG."""
+    imágenes del SVG. Las imágenes cuyo archivo no se encuentra se reportan en
+    `warnings` (no se ocultan: el usuario vería 0 trazos sin saber por qué)."""
     svg = se.SVG.parse(svg_path, ppi=72, reify=True)
     base_dir = os.path.dirname(os.path.abspath(svg_path))
     result: list[Polyline] = []
@@ -102,6 +103,8 @@ def trace_images(svg_path: str, margin_mm: float = 0.0, tolerance_mm: float = 0.
             continue
         img = _load_image(el.url, base_dir)
         if img is None:
+            if warnings is not None:
+                warnings.append(f"Imagen no encontrada, sin silueta: {(el.url or '?')[:120]}")
             continue
         mask = _mask(img, white_threshold)
         mh, mw = mask.shape
@@ -150,11 +153,12 @@ def rect_images(svg_path: str, margin_mm: float = 0.0) -> list[Polyline]:
 
 
 def add_image_outlines(geom: SvgGeometry, svg_path: str, mode: str = "ignore",
-                       margin_mm: float = 0.0, tolerance_mm: float = 0.1) -> SvgGeometry:
-    """mode: 'ignore' | 'rect' | 'trace'."""
+                       margin_mm: float = 0.0, tolerance_mm: float = 0.1) -> list[str]:
+    """mode: 'ignore' | 'rect' | 'trace'. Devuelve avisos (imágenes no resueltas)."""
+    warnings: list[str] = []
     if mode == "trace":
-        geom.paths = geom.paths + trace_images(svg_path, margin_mm, tolerance_mm)
+        geom.paths = geom.paths + trace_images(svg_path, margin_mm, tolerance_mm, warnings=warnings)
     elif mode == "rect":
         geom.paths = geom.paths + rect_images(svg_path, margin_mm)
     geom.bbox = _geom_bbox(geom.paths)
-    return geom
+    return warnings

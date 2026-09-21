@@ -57,6 +57,15 @@ Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*bridge.ser
   Write-Host "Bridge detenido (PID $($_.ProcessId))"
 }
 
+# --- Dependencias Python del bridge (venv del proyecto) ---
+$venvPy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+if (Test-Path $venvPy) {
+  & $venvPy -m pip install -q -r (Join-Path $PSScriptRoot 'bridge\requirements.txt')
+  if ($LASTEXITCODE -eq 0) { Write-Host "Dependencias del bridge OK" } else { Write-Warning "pip install falló (código $LASTEXITCODE)" }
+} else {
+  Write-Warning "No existe .venv: crea el entorno (ver README) antes de usar el bridge."
+}
+
 # --- PlayerDebugMode ---
 foreach ($v in 9..12) {
   $key = "HKCU:\Software\Adobe\CSXS.$v"

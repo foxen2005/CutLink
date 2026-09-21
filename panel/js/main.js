@@ -115,6 +115,10 @@
     btnMaterialSave: $('btn-material-save'),
     btnMaterialSaveAs: $('btn-material-saveas'),
     btnMaterialDelete: $('btn-material-delete'),
+    materialSaveAsBox: $('material-saveas-box'),
+    inMaterialName: $('in-material-name'),
+    btnMaterialSaveAsOk: $('btn-material-saveas-ok'),
+    btnMaterialSaveAsCancel: $('btn-material-saveas-cancel'),
     btnBladeEdit: $('btn-blade-edit'),
     bladeEditor: $('blade-editor'),
     blName: $('bl-name'),
@@ -201,7 +205,6 @@
   // Bridge HTTP
   // ---------------------------------------------------------------------------
   var bridgeOnline = false;
-  var autoStartTried = false;
 
   function bridgeFetch(path, opts, timeoutMs) {
     var url = settings.bridgeUrl + path;
@@ -243,10 +246,12 @@
     if (!bridgeOnline) {
       setStatus('off', 'Bridge no iniciado');
       el.btnStartBridge.hidden = false;
+      el.btnStartBridge.textContent = 'Iniciar bridge';
       el.btnCut.disabled = true;
       return;
     }
-    el.btnStartBridge.hidden = true;
+    el.btnStartBridge.hidden = false;
+    el.btnStartBridge.textContent = 'Reiniciar';
     var st = lastStatus || {};
     var job = lastJob || {};
     if (job.state === 'running') {
@@ -320,13 +325,14 @@
       lastStatus = null;
       lastJob = null;
       materialsLoaded = false;
-      // Autoarranque: una sola vez por sesión del panel, si tenemos Node
-      if (!autoStartTried && hasNode) {
-        autoStartTried = true;
-        log('Bridge no responde: lanzándolo automáticamente…');
-        startBridge();
+      offlinePolls++;
+      // Autorreparación: tras 3 sondeos fallidos seguidos (~6 s) se mata cualquier
+      // bridge colgado/viejo y se relanza; como mucho una vez cada 30 s.
+      if (hasNode && offlinePolls >= 3 && Date.now() - lastRestartAt > 30000) {
+        restartBridge('no responde');
       }
     }).then(function () {
+      if (bridgeOnline) offlinePolls = 0;
       renderStatus();
       renderJob();
     });
@@ -338,8 +344,34 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Lanzar bridge con Node
+  // Lanzar / reiniciar bridge con Node
   // ---------------------------------------------------------------------------
+  var offlinePolls = 0;
+  var lastRestartAt = 0;
+
+  // Mata todos los procesos "bridge.server" (viejos, colgados o duplicados) y luego lanza uno.
+  function restartBridge(reason) {
+    if (!hasNode) { startBridge(); return; }
+    lastRestartAt = Date.now();
+    offlinePolls = 0;
+    log('Reiniciando bridge (' + (reason || 'manual') + ')…');
+    setStatus('busy', 'Reiniciando bridge…');
+    var ps = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*bridge.server*' } | " +
+             "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }";
+    try {
+      nodeCp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
+        { windowsHide: true, timeout: 15000 }, function (err, stdout) {
+          var killed = (stdout || '').split(/\r?\n/).filter(function (s) { return s.trim(); });
+          if (err) logErr('No se pudieron cerrar bridges anteriores: ' + err.message);
+          else if (killed.length) log('Bridges cerrados: PID ' + killed.join(', '));
+          setTimeout(startBridge, 500);
+        });
+    } catch (e) {
+      logErr('Error al reiniciar: ' + e.message);
+      startBridge();
+    }
+  }
+
   function startBridge() {
     if (!hasNode) {
       logErr('Node no disponible en el panel (revisa --enable-nodejs en manifest). Inicia el bridge a mano: python -m bridge.server');
@@ -551,11 +583,20 @@
     }).catch(function (e) { logErr(e.message); });
   }
 
+  // window.prompt() no existe en CEP (devuelve null): pedimos el nombre en línea
   function onMaterialSaveAs() {
     var m = currentMaterial();
-    var name = window.prompt('Nombre del nuevo material:', m ? (m.name + ' (mío)') : '');
-    if (!name) return;
-    saveMaterial(materialPayload(null, name.trim()));
+    el.inMaterialName.value = m ? (m.name + ' (mío)') : '';
+    el.materialSaveAsBox.hidden = false;
+    el.inMaterialName.focus();
+    el.inMaterialName.select();
+  }
+
+  function onMaterialSaveAsOk() {
+    var name = el.inMaterialName.value.trim();
+    if (!name) { logErr('El material necesita un nombre'); return; }
+    el.materialSaveAsBox.hidden = true;
+    saveMaterial(materialPayload(null, name));
   }
 
   function onMaterialSave() {
@@ -778,6 +819,7 @@
       if (!res.ok) throw new Error(res.error || 'dry-run falló');
       lastDryRun = res;
       drawPreview(res);
+      (res.warnings || []).forEach(function (w) { logErr(w); });
       if (res.stats.paths === 0) {
         // Típico: el documento solo tiene imágenes colocadas (JPG/PNG) — no hay vectores
         el.previewStats.textContent = el.selImages.value === 'ignore'
@@ -951,7 +993,7 @@
   // Eventos
   // ---------------------------------------------------------------------------
   function bindEvents() {
-    el.btnStartBridge.addEventListener('click', startBridge);
+    el.btnStartBridge.addEventListener('click', function () { restartBridge('manual'); });
     el.btnSaveSettings.addEventListener('click', function () {
       settings = {
         pythonExe: el.cfgPython.value.trim() || DEFAULTS.pythonExe,
@@ -988,6 +1030,12 @@
     el.inSpeed.addEventListener('input', updateMaterialSummary);
     el.btnMaterialSave.addEventListener('click', onMaterialSave);
     el.btnMaterialSaveAs.addEventListener('click', onMaterialSaveAs);
+    el.btnMaterialSaveAsOk.addEventListener('click', onMaterialSaveAsOk);
+    el.btnMaterialSaveAsCancel.addEventListener('click', function () { el.materialSaveAsBox.hidden = true; });
+    el.inMaterialName.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') onMaterialSaveAsOk();
+      if (ev.key === 'Escape') el.materialSaveAsBox.hidden = true;
+    });
     el.btnMaterialDelete.addEventListener('click', onMaterialDelete);
     el.btnBladeEdit.addEventListener('click', onBladeEditToggle);
     el.btnBladeSave.addEventListener('click', onBladeSave);

@@ -87,6 +87,12 @@
         <button id="btn-material-saveas" class="btn small" title="Crear un material propio con los valores actuales">Guardar como…</button>
         <button id="btn-material-delete" class="btn small btn-danger" title="Eliminar este material propio">✕</button>
       </div>
+      <!-- CEP no implementa window.prompt(): el nombre se pide en línea -->
+      <div id="material-saveas-box" class="row" hidden>
+        <input type="text" id="in-material-name" class="grow" placeholder="Nombre del nuevo material">
+        <button id="btn-material-saveas-ok" class="btn small">Crear</button>
+        <button id="btn-material-saveas-cancel" class="btn small">Cancelar</button>
+      </div>
       <div class="grid2">
         <div class="field">
           <label for="in-pressure">Presión (1–33)</label>
