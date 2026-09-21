@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:7474 'unsafe-inline' 'unsafe-eval'; connect-src http://127.0.0.1:7474 'self';">
+  <title>Cameo Cut</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===== ESTADO ===== -->
+    <section class="card" id="sec-status">
+      <div class="row status-row">
+        <span class="dot" id="status-dot"></span>
+        <span class="status-text" id="status-text">Bridge no iniciado</span>
+        <button id="btn-start-bridge" class="btn small" title="Lanza el bridge Python en segundo plano">Iniciar bridge</button>
+      </div>
+      <details id="settings">
+        <summary>Ajustes</summary>
+        <div class="field">
+          <label for="cfg-python">Ejecutable Python</label>
+          <input type="text" id="cfg-python" placeholder="python">
+        </div>
+        <div class="field">
+          <label for="cfg-root">Carpeta raíz del bridge</label>
+          <input type="text" id="cfg-root" placeholder="D:\SandBox\cameo-illustrator">
+        </div>
+        <div class="field">
+          <label for="cfg-url">URL del bridge</label>
+          <input type="text" id="cfg-url" placeholder="http://127.0.0.1:7474">
+        </div>
+        <div class="row">
+          <button id="btn-save-settings" class="btn small">Guardar ajustes</button>
+          <span class="hint">Node: <span id="node-status">?</span></span>
+        </div>
+      </details>
+    </section>
+
+    <!-- ===== QUÉ CORTAR ===== -->
+    <section class="card" id="sec-source">
+      <div class="card-title">
+        <span>Qué cortar</span>
+        <button id="btn-refresh-doc" class="btn small">Actualizar</button>
+      </div>
+      <div class="doc-name" id="doc-name">Sin documento</div>
+      <div class="radio-group">
+        <label class="radio"><input type="radio" name="mode" value="selection" checked> Selección</label>
+        <label class="radio radio-inline">
+          <input type="radio" name="mode" value="layer"> Capa:
+          <select id="sel-layer" class="inline-select"></select>
+        </label>
+        <label class="radio"><input type="radio" name="mode" value="all"> Todo el documento</label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="chk-color"> Solo trazos de color</label>
+        <select id="sel-color" class="inline-select" disabled></select>
+        <span class="swatch" id="color-swatch"></span>
+      </div>
+    </section>
+
+    <!-- ===== MATERIAL ===== -->
+    <section class="card" id="sec-material">
+      <div class="card-title"><span>Material</span></div>
+      <div class="field">
+        <select id="sel-material"><option value="">(sin materiales — bridge no conectado)</option></select>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="in-pressure">Presión (1–33)</label>
+          <input type="number" id="in-pressure" min="1" max="33" step="1">
+        </div>
+        <div class="field">
+          <label for="in-speed">Velocidad (1–30)</label>
+          <input type="number" id="in-speed" min="1" max="30" step="1">
+        </div>
+        <div class="field">
+          <label for="in-depth">Prof. AutoBlade (1–10)</label>
+          <input type="number" id="in-depth" min="1" max="10" step="1" placeholder="no tocar">
+        </div>
+        <div class="field">
+          <label for="in-passes">Pasadas (1–5)</label>
+          <input type="number" id="in-passes" min="1" max="5" step="1" value="1">
+        </div>
+        <div class="field">
+          <label for="sel-tool">Herramienta</label>
+          <select id="sel-tool">
+            <option value="1">1 (izquierda)</option>
+            <option value="2">2 (derecha)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sel-mat">Mat</label>
+          <select id="sel-mat">
+            <option value="0">Sin mat</option>
+            <option value="1" selected>12x12</option>
+            <option value="2">12x24</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PRINT & CUT ===== -->
+    <section class="card" id="sec-pnc">
+      <details id="pnc-details">
+        <summary>Print &amp; Cut <span class="badge" id="pnc-badge" hidden>activo</span></summary>
+        <label class="check"><input type="checkbox" id="chk-pnc"> Activar Print &amp; Cut</label>
+        <div class="grid3">
+          <div class="field">
+            <label for="in-inset">Inset (mm)</label>
+            <input type="number" id="in-inset" min="5" max="50" step="0.5" value="10">
+          </div>
+          <div class="field">
+            <label for="in-calx">Calib. X (mm)</label>
+            <input type="number" id="in-calx" step="0.1" value="0">
+          </div>
+          <div class="field">
+            <label for="in-caly">Calib. Y (mm)</label>
+            <input type="number" id="in-caly" step="0.1" value="0">
+          </div>
+        </div>
+        <div class="row">
+          <button id="btn-add-regmarks" class="btn small">Agregar marcas al documento</button>
+          <button id="btn-remove-regmarks" class="btn small">Quitar marcas</button>
+        </div>
+        <div class="hint" id="regmarks-info">El documento no tiene marcas.</div>
+      </details>
+    </section>
+
+    <!-- ===== VISTA PREVIA ===== -->
+    <section class="card" id="sec-preview">
+      <div class="card-title">
+        <span>Vista previa</span>
+        <button id="btn-preview" class="btn small">Vista previa</button>
+      </div>
+      <canvas id="preview-canvas" width="320" height="200"></canvas>
+      <div class="stats" id="preview-stats">Sin vista previa.</div>
+    </section>
+
+    <!-- ===== CORTAR ===== -->
+    <section class="card" id="sec-cut">
+      <button id="btn-cut" class="btn btn-cut">CORTAR</button>
+      <div id="job-box" hidden>
+        <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="row">
+          <span class="job-msg" id="job-msg"></span>
+          <button id="btn-abort" class="btn small btn-danger">Abortar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== LOG ===== -->
+    <section class="log" id="log"></section>
+
+  </div>
+
+  <script src="lib/CSInterface.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
