@@ -51,22 +51,31 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # menos ruido en consola
         if "/status" in (args[0] if args else "") or "/job" in (args[0] if args else ""):
             return
-        sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+        # Bajo pythonw.exe no hay consola: sys.stderr es None y escribir rompería la petición
+        if sys.stderr is None:
+            return
+        try:
+            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+        except (OSError, ValueError):
+            pass
 
     # -- rutas -----------------------------------------------------------------
     def do_OPTIONS(self):
         self._json(204, {})
 
     def do_GET(self):
-        if self.path == "/status":
-            return self._json(200, runner.machine_status())
-        if self.path == "/materials":
-            return self._json(200, load_materials())
-        if self.path == "/blades":
-            return self._json(200, presets.list_blades())
-        if self.path == "/job":
-            return self._json(200, runner.state.to_dict())
-        self._json(404, {"ok": False, "error": "ruta desconocida"})
+        try:
+            if self.path == "/status":
+                return self._json(200, runner.machine_status())
+            if self.path == "/materials":
+                return self._json(200, load_materials())
+            if self.path == "/blades":
+                return self._json(200, presets.list_blades())
+            if self.path == "/job":
+                return self._json(200, runner.state.to_dict())
+            self._json(404, {"ok": False, "error": "ruta desconocida"})
+        except Exception as e:  # noqa: BLE001 - nunca cerrar la conexión sin respuesta
+            self._json(500, {"ok": False, "error": f"{type(e).__name__}: {e}"})
 
     def do_POST(self):
         try:
