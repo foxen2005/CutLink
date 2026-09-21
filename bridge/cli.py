@@ -64,7 +64,9 @@ def main(argv=None):
         return
     if a.cmd == "materials":
         for m in load_materials():
-            print(f"{m['id']:14} {m['name']:40} P{m['pressure']:>2} V{m['speed']:>2} D{m['depth']} x{m['passes']} tool{m['tool']}")
+            tag = "*" if m.get("custom") else " "
+            print(f"{tag}{m['id']:14} {m['name']:40} P{m['pressure']:>2} V{m['speed']:>2} "
+                  f"D{m['depth']} x{m['passes']} cuchilla={m.get('blade_id')} tool{m['tool']}")
         return
 
     d = dry_run(a.svg, a.material, _overrides(a), a.color)

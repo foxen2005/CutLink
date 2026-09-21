@@ -1,0 +1,7 @@
+[
+  {"id": "autoblade",     "name": "AutoBlade (Cameo 4)",              "type": "auto",    "offset_mm": 0.0,  "tool": 1},
+  {"id": "ratchet",       "name": "Cuchilla de trinquete estándar",    "type": "ratchet", "offset_mm": 0.25, "tool": 1},
+  {"id": "ratchet_deep",  "name": "Cuchilla de trinquete corte profundo (2 mm)", "type": "ratchet", "offset_mm": 0.5, "tool": 1},
+  {"id": "kraft",         "name": "Kraft Blade (carro 2, materiales gruesos)",   "type": "ratchet", "offset_mm": 0.75, "tool": 2},
+  {"id": "pen",           "name": "Pluma / rotulador",                "type": "pen",     "offset_mm": 0.0,  "tool": 1}
+]

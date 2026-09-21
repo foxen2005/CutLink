@@ -4,19 +4,18 @@ para el servidor HTTP y la CLI. Un solo trabajo a la vez.
 """
 from __future__ import annotations
 
-import json
 import subprocess
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
+from dataclasses import dataclass, asdict
 
+from . import presets
 from .gpgl import Cameo, CutSettings, RegmarkSettings, JobAborted, MachineError
+from .ordering import order_paths
 from .svgpaths import svg_to_polylines, to_dict, total_length_mm, SvgGeometry
 from .usbprint import DeviceNotFound, DeviceTimeout
 
-MATERIALS_FILE = Path(__file__).with_name("materials.json")
 STUDIO_EXE = "Silhouette Studio.exe"
 
 
@@ -32,29 +31,30 @@ def studio_running() -> bool:
         return False
 
 
-def load_materials() -> list[dict]:
-    return json.loads(MATERIALS_FILE.read_text(encoding="utf-8"))
-
-
-def find_material(material_id: str | None) -> dict:
-    mats = load_materials()
-    for m in mats:
-        if m["id"] == material_id:
-            return m
-    return mats[0]
+load_materials = presets.list_materials
+find_material = presets.find_material
 
 
 def build_settings(material_id: str | None, overrides: dict | None) -> CutSettings:
+    """Material (+ overrides del panel) -> CutSettings.
+
+    La cuchilla se resuelve por `blade_id` (perfil): de ahí salen tipo y offset.
+    `blade`/`blade_offset` sueltos en overrides siguen funcionando (CLI)."""
     m = dict(find_material(material_id))
     m.update({k: v for k, v in (overrides or {}).items() if v is not None and v != ""})
+    blade = presets.find_blade(m.get("blade_id")) or {}
+    blade_type = str(m.get("blade") or blade.get("type") or "ratchet")
+    offset = m.get("blade_offset")
+    if offset in (None, ""):
+        offset = blade.get("offset_mm")  # None -> valor por defecto del tipo
     return CutSettings(
-        tool=int(m.get("tool", 1)),
+        tool=int(m.get("tool") or blade.get("tool") or 1),
         speed=int(m.get("speed", 10)),
         pressure=int(m.get("pressure", 10)),
         depth=None if m.get("depth") in (None, "") else int(m["depth"]),
         passes=int(m.get("passes", 1)),
-        blade=str(m.get("blade", "auto")),
-        blade_offset_mm=None if m.get("blade_offset") in (None, "") else float(m["blade_offset"]),
+        blade=blade_type,
+        blade_offset_mm=None if offset is None else float(offset),
         mat=int(m.get("mat", 1)),
         return_home=bool(m.get("return_home", True)),
     )
@@ -82,6 +82,7 @@ def load_geometry(svg_path: str, only_stroke_color: str | None = None,
         geom.bbox = _bbox(geom)
     # Descartamos geometría de las marcas de registro si vino en el SVG
     geom.paths = [p for p in geom.paths if "Regmarks" not in p.group_ids]
+    geom.paths = order_paths(geom.paths)
     geom.bbox = _bbox(geom)
     return geom
 

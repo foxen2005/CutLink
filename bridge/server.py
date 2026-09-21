@@ -10,6 +10,9 @@ Endpoints (JSON):
   POST /cut        {svg_path, material_id, overrides, only_stroke_color, print_and_cut}
   GET  /job        progreso del trabajo actual
   POST /abort
+  GET  /blades                 perfiles de cuchilla (base + propios)
+  POST /materials, /blades     guardar preset propio (body = preset)
+  POST /materials/delete, /blades/delete   {id}
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import presets
 from .jobs import JobRunner, dry_run, load_materials
 
 runner = JobRunner()
@@ -58,6 +62,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, runner.machine_status())
         if self.path == "/materials":
             return self._json(200, load_materials())
+        if self.path == "/blades":
+            return self._json(200, presets.list_blades())
         if self.path == "/job":
             return self._json(200, runner.state.to_dict())
         self._json(404, {"ok": False, "error": "ruta desconocida"})
@@ -80,6 +86,15 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/abort":
                 runner.abort()
                 return self._json(200, {"ok": True})
+            # Presets propios (se guardan en %APPDATA%\CameoCut\presets.json)
+            if self.path == "/materials":
+                return self._json(200, {"ok": True, "material": presets.save_material(data)})
+            if self.path == "/materials/delete":
+                return self._json(200, {"ok": presets.delete_material(data["id"])})
+            if self.path == "/blades":
+                return self._json(200, {"ok": True, "blade": presets.save_blade(data)})
+            if self.path == "/blades/delete":
+                return self._json(200, {"ok": presets.delete_blade(data["id"])})
             self._json(404, {"ok": False, "error": "ruta desconocida"})
         except KeyError as e:
             self._json(400, {"ok": False, "error": f"falta el campo {e}"})

@@ -60,6 +60,30 @@ html, body {
   color: var(--fg-dim);
 }
 
+/* Secciones colapsables: <details class="card"> con <summary class="card-title"> */
+details.card > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  gap: 6px;
+}
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary > span:first-child { flex: 1; }
+details.card > summary > span:first-child::before {
+  content: "▸";
+  display: inline-block;
+  width: 12px;
+  color: var(--fg-dim);
+}
+details.card[open] > summary > span:first-child::before { content: "▾"; }
+details.card:not([open]) { gap: 0; }
+.summary-hint { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--fg-dim); max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Bloque secundario dentro de una tarjeta (editor de cuchillas) */
+.sub { margin-top: 6px; padding: 8px; border: 1px dashed var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: 6px; }
+.grow { flex: 1; min-width: 0; width: auto; }
+.row.tight { gap: 3px; flex-wrap: nowrap; }
+
 .row {
   display: flex;
   align-items: center;

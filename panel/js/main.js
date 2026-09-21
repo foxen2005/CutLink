@@ -109,6 +109,19 @@
     selTool: $('sel-tool'),
     selMat: $('sel-mat'),
     chkHome: $('chk-home'),
+    materialSummary: $('material-summary'),
+    btnMaterialSave: $('btn-material-save'),
+    btnMaterialSaveAs: $('btn-material-saveas'),
+    btnMaterialDelete: $('btn-material-delete'),
+    btnBladeEdit: $('btn-blade-edit'),
+    bladeEditor: $('blade-editor'),
+    blName: $('bl-name'),
+    blType: $('bl-type'),
+    blOffset: $('bl-offset'),
+    blTool: $('bl-tool'),
+    btnBladeSave: $('btn-blade-save'),
+    btnBladeDelete: $('btn-blade-delete'),
+    bladeHint: $('blade-hint'),
 
     chkPnc: $('chk-pnc'),
     pncBadge: $('pnc-badge'),
@@ -181,6 +194,7 @@
   // Bridge HTTP
   // ---------------------------------------------------------------------------
   var bridgeOnline = false;
+  var autoStartTried = false;
 
   function bridgeFetch(path, opts, timeoutMs) {
     var url = settings.bridgeUrl + path;
@@ -299,6 +313,12 @@
       lastStatus = null;
       lastJob = null;
       materialsLoaded = false;
+      // Autoarranque: una sola vez por sesión del panel, si tenemos Node
+      if (!autoStartTried && hasNode) {
+        autoStartTried = true;
+        log('Bridge no responde: lanzándolo automáticamente…');
+        startBridge();
+      }
     }).then(function () {
       renderStatus();
       renderJob();
@@ -339,42 +359,70 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Materiales
+  // Cuchillas (perfiles) y materiales — base + propios (se guardan en el bridge)
   // ---------------------------------------------------------------------------
   var materials = [];
+  var blades = [];
+
+  function fillSelect(select, items, labelFn, keep) {
+    var prev = keep ? select.value : '';
+    select.innerHTML = '';
+    items.forEach(function (it) {
+      var o = document.createElement('option');
+      o.value = it.id;
+      o.textContent = labelFn(it);
+      select.appendChild(o);
+    });
+    if (prev && items.some(function (it) { return it.id === prev; })) select.value = prev;
+  }
+
+  function loadBlades() {
+    return bridgeGet('/blades').then(function (list) {
+      if (!Array.isArray(list)) throw new Error('Respuesta /blades inválida');
+      blades = list;
+      fillSelect(el.selBlade, blades, function (b) {
+        return b.name + (b.custom ? ' ★' : '');
+      }, true);
+      updateDepthLabel();
+    });
+  }
 
   function loadMaterials() {
-    bridgeGet('/materials').then(function (list) {
+    loadBlades().then(function () {
+      return bridgeGet('/materials');
+    }).then(function (list) {
       if (!Array.isArray(list)) throw new Error('Respuesta /materials inválida');
       materials = list;
       materialsLoaded = true;
       var prev = el.selMaterial.value;
-      el.selMaterial.innerHTML = '';
-      if (list.length === 0) {
+      fillSelect(el.selMaterial, materials, function (m) {
+        return m.name + ' (P' + m.pressure + ' V' + m.speed + ')' + (m.custom ? ' ★' : '');
+      }, false);
+      if (materials.length === 0) {
         var o0 = document.createElement('option');
         o0.value = ''; o0.textContent = '(sin materiales en el bridge)';
         el.selMaterial.appendChild(o0);
       }
-      list.forEach(function (m) {
-        var o = document.createElement('option');
-        o.value = m.id;
-        o.textContent = m.name + ' (P' + m.pressure + ' V' + m.speed + ')';
-        el.selMaterial.appendChild(o);
-      });
       var restore = prev || (localStorage.getItem('cameocut.material') || '');
-      if (restore && list.some(function (m) { return m.id === restore; })) {
+      if (restore && materials.some(function (m) { return m.id === restore; })) {
         el.selMaterial.value = restore;
       }
       applyMaterial();
-      log('Materiales cargados: ' + list.length);
+      log('Materiales: ' + materials.length + ' · cuchillas: ' + blades.length);
     }).catch(function (e) {
-      logErr('No se pudieron cargar materiales: ' + e.message);
+      logErr('No se pudieron cargar presets: ' + e.message);
     });
   }
 
   function currentMaterial() {
     var id = el.selMaterial.value;
     for (var i = 0; i < materials.length; i++) if (materials[i].id === id) return materials[i];
+    return null;
+  }
+
+  function currentBlade() {
+    var id = el.selBlade.value;
+    for (var i = 0; i < blades.length; i++) if (blades[i].id === id) return blades[i];
     return null;
   }
 
@@ -385,24 +433,44 @@
     el.inSpeed.value = m.speed;
     el.inDepth.value = (m.depth === null || m.depth === undefined) ? '' : m.depth;
     el.inPasses.value = m.passes || 1;
-    el.selTool.value = String(m.tool || 1);
-    el.selBlade.value = m.blade || 'ratchet';
+    if (m.blade_id && blades.some(function (b) { return b.id === m.blade_id; })) el.selBlade.value = m.blade_id;
+    var b = currentBlade();
+    // Carro: el del material si lo fija, si no el de la cuchilla
+    el.selTool.value = String(m.tool || (b && b.tool) || 1);
+    if (typeof m.return_home === 'boolean') el.chkHome.checked = m.return_home;
+    el.btnMaterialSave.disabled = !m.custom;
+    el.btnMaterialDelete.disabled = !m.custom;
     updateDepthLabel();
+    updateMaterialSummary();
     try { localStorage.setItem('cameocut.material', m.id); } catch (e) {}
+  }
+
+  function updateMaterialSummary() {
+    var m = currentMaterial();
+    el.materialSummary.textContent = m ? (m.name + ' · P' + el.inPressure.value + ' V' + el.inSpeed.value) : '';
   }
 
   // Con trinquete la profundidad se fija a mano en la cuchilla: el número es solo una sugerencia
   function updateDepthLabel() {
-    var b = el.selBlade.value;
-    el.lblDepth.textContent = b === 'auto' ? 'Prof. AutoBlade (1–10)'
-      : b === 'pen' ? 'Profundidad (no aplica)' : 'Prof. sugerida en cuchilla (1–10)';
-    el.inDepth.disabled = (b !== 'auto');
+    var b = currentBlade();
+    var t = b ? b.type : 'ratchet';
+    el.lblDepth.textContent = t === 'auto' ? 'Prof. AutoBlade (1–10)'
+      : t === 'pen' ? 'Profundidad (no aplica)' : 'Prof. sugerida en cuchilla (1–10)';
+    el.inDepth.disabled = (t !== 'auto');
+  }
+
+  // Al cambiar de cuchilla, el carro por defecto es el de esa cuchilla
+  function onBladeChange() {
+    var b = currentBlade();
+    if (b) el.selTool.value = String(b.tool || 1);
+    updateDepthLabel();
+    if (!el.bladeEditor.hidden) fillBladeEditor();
   }
 
   function numOrNull(input, min, max) {
     var v = input.value;
     if (v === '' || v === null || v === undefined) return null;
-    var n = parseInt(v, 10);
+    var n = parseFloat(v);
     if (isNaN(n)) return null;
     if (n < min) n = min;
     if (n > max) n = max;
@@ -411,16 +479,111 @@
 
   function buildOverrides() {
     var o = {};
-    var p = numOrNull(el.inPressure, 1, 33); if (p !== null) o.pressure = p;
-    var s = numOrNull(el.inSpeed, 1, 30); if (s !== null) o.speed = s;
-    var d = numOrNull(el.inDepth, 1, 10); if (d !== null) o.depth = d;
-    var n = numOrNull(el.inPasses, 1, 5); if (n !== null) o.passes = n;
+    var p = numOrNull(el.inPressure, 1, 33); if (p !== null) o.pressure = Math.round(p);
+    var s = numOrNull(el.inSpeed, 1, 30); if (s !== null) o.speed = Math.round(s);
+    var d = numOrNull(el.inDepth, 1, 10); if (d !== null) o.depth = Math.round(d);
+    var n = numOrNull(el.inPasses, 1, 5); if (n !== null) o.passes = Math.round(n);
     o.tool = parseInt(el.selTool.value, 10) || 1;
     o.mat = parseInt(el.selMat.value, 10) || 0;
-    o.blade = el.selBlade.value || 'ratchet';
-    if (o.blade !== 'auto') delete o.depth;
+    o.blade_id = el.selBlade.value || 'ratchet';
+    var b = currentBlade();
+    if (!b || b.type !== 'auto') delete o.depth;
     o.return_home = !!el.chkHome.checked;
     return o;
+  }
+
+  // -- guardar / eliminar materiales propios --------------------------------
+  function materialPayload(id, name) {
+    var o = buildOverrides();
+    var d = numOrNull(el.inDepth, 1, 10);
+    return {
+      id: id || undefined, name: name,
+      pressure: o.pressure, speed: o.speed, passes: o.passes,
+      depth: d === null ? null : Math.round(d),
+      tool: o.tool, mat: o.mat, blade_id: o.blade_id, return_home: o.return_home
+    };
+  }
+
+  function saveMaterial(payload) {
+    return bridgePost('/materials', payload).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'No se pudo guardar');
+      logOk('Material guardado: ' + r.material.name);
+      el.selMaterial.value = r.material.id;
+      try { localStorage.setItem('cameocut.material', r.material.id); } catch (e) {}
+      loadMaterials();
+    }).catch(function (e) { logErr(e.message); });
+  }
+
+  function onMaterialSaveAs() {
+    var m = currentMaterial();
+    var name = window.prompt('Nombre del nuevo material:', m ? (m.name + ' (mío)') : '');
+    if (!name) return;
+    saveMaterial(materialPayload(null, name.trim()));
+  }
+
+  function onMaterialSave() {
+    var m = currentMaterial();
+    if (!m || !m.custom) return;
+    saveMaterial(materialPayload(m.id, m.name));
+  }
+
+  function onMaterialDelete() {
+    var m = currentMaterial();
+    if (!m || !m.custom) return;
+    if (!window.confirm('¿Eliminar el material "' + m.name + '"?')) return;
+    bridgePost('/materials/delete', { id: m.id }).then(function () {
+      logOk('Material eliminado');
+      el.selMaterial.value = '';
+      loadMaterials();
+    }).catch(function (e) { logErr(e.message); });
+  }
+
+  // -- editor de perfiles de cuchilla ------------------------------------------
+  function fillBladeEditor() {
+    var b = currentBlade();
+    if (!b) return;
+    el.blName.value = b.custom ? b.name : (b.name + ' (copia)');
+    el.blType.value = b.type;
+    el.blOffset.value = b.offset_mm;
+    el.blTool.value = String(b.tool || 1);
+    el.btnBladeDelete.disabled = !b.custom;
+    el.bladeHint.textContent = b.custom ? 'Perfil propio' : 'Perfil base: al guardar se crea una copia propia';
+  }
+
+  function onBladeEditToggle() {
+    el.bladeEditor.hidden = !el.bladeEditor.hidden;
+    if (!el.bladeEditor.hidden) fillBladeEditor();
+  }
+
+  function onBladeSave() {
+    var b = currentBlade();
+    var name = el.blName.value.trim();
+    if (!name) { logErr('La cuchilla necesita un nombre'); return; }
+    var payload = {
+      // Si se edita un perfil propio se conserva su id; un base se guarda como perfil nuevo
+      id: (b && b.custom && b.name === name) ? b.id : undefined,
+      name: name, type: el.blType.value,
+      offset_mm: parseFloat(el.blOffset.value) || 0,
+      tool: parseInt(el.blTool.value, 10) || 1
+    };
+    bridgePost('/blades', payload).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'No se pudo guardar');
+      logOk('Cuchilla guardada: ' + r.blade.name);
+      return loadBlades().then(function () {
+        el.selBlade.value = r.blade.id;
+        onBladeChange();
+      });
+    }).catch(function (e) { logErr(e.message); });
+  }
+
+  function onBladeDelete() {
+    var b = currentBlade();
+    if (!b || !b.custom) return;
+    if (!window.confirm('¿Eliminar la cuchilla "' + b.name + '"?')) return;
+    bridgePost('/blades/delete', { id: b.id }).then(function () {
+      logOk('Cuchilla eliminada');
+      return loadBlades().then(onBladeChange);
+    }).catch(function (e) { logErr(e.message); });
   }
 
   // ---------------------------------------------------------------------------
@@ -661,6 +824,7 @@
     var modeTxt = { selection: 'la selección', layer: 'la capa "' + el.selLayer.value + '"', all: 'todo el documento' }[currentMode()];
     var msg = '¿Enviar a cortar ' + modeTxt + '?\n\n' +
       'Material: ' + (m ? m.name : el.selMaterial.value) + '\n' +
+      'Cuchilla: ' + (currentBlade() ? currentBlade().name : ov.blade_id) + '\n' +
       'Presión ' + ov.pressure + ' · Velocidad ' + ov.speed + ' · Pasadas ' + ov.passes +
       (ov.depth ? ' · Prof. ' + ov.depth : '') + ' · Herramienta ' + ov.tool + '\n' +
       'Mat: ' + ['Sin mat', '12x12', '12x24'][ov.mat] +
@@ -760,12 +924,36 @@
     el.selColor.addEventListener('change', updateSwatch);
 
     el.selMaterial.addEventListener('change', applyMaterial);
-    el.selBlade.addEventListener('change', updateDepthLabel);
+    el.selBlade.addEventListener('change', onBladeChange);
+    el.inPressure.addEventListener('input', updateMaterialSummary);
+    el.inSpeed.addEventListener('input', updateMaterialSummary);
+    el.btnMaterialSave.addEventListener('click', onMaterialSave);
+    el.btnMaterialSaveAs.addEventListener('click', onMaterialSaveAs);
+    el.btnMaterialDelete.addEventListener('click', onMaterialDelete);
+    el.btnBladeEdit.addEventListener('click', onBladeEditToggle);
+    el.btnBladeSave.addEventListener('click', onBladeSave);
+    el.btnBladeDelete.addEventListener('click', onBladeDelete);
+
     // Ajustes ocultos tras el ☰: solo hacen falta la primera vez
     el.btnMenu.addEventListener('click', function () {
       var open = el.settingsBox.hidden;
       el.settingsBox.hidden = !open;
       el.btnMenu.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+
+    // Secciones colapsables: recordar estado; los botones dentro del título no pliegan
+    document.querySelectorAll('details.card').forEach(function (d) {
+      try {
+        var saved = localStorage.getItem('cameocut.open.' + d.id);
+        if (saved === '1') d.open = true; else if (saved === '0') d.open = false;
+      } catch (e) {}
+      d.addEventListener('toggle', function () {
+        try { localStorage.setItem('cameocut.open.' + d.id, d.open ? '1' : '0'); } catch (e) {}
+        if (d.id === 'sec-preview' && d.open && lastDryRun) drawPreview(lastDryRun);
+      });
+      d.querySelectorAll('summary button').forEach(function (b) {
+        b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); });
+      });
     });
 
     el.chkPnc.addEventListener('change', function () {

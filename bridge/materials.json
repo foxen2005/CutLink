@@ -1,10 +1,10 @@
 [
-  {"id": "vinilo",        "name": "Vinilo adhesivo (kiss cut)",        "pressure": 10, "speed": 10, "depth": 1, "passes": 1, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "vinilo_die",    "name": "Vinilo (corte completo)",           "pressure": 20, "speed": 8,  "depth": 3, "passes": 1, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "sticker_papel", "name": "Papel adhesivo sticker (kiss cut)", "pressure": 12, "speed": 8,  "depth": 2, "passes": 1, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "papel_80",      "name": "Papel 80 g",                        "pressure": 12, "speed": 10, "depth": 2, "passes": 1, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "cartulina",     "name": "Cartulina 200-250 g",               "pressure": 25, "speed": 6,  "depth": 5, "passes": 1, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "cartulina_2p",  "name": "Cartulina gruesa (2 pasadas)",      "pressure": 33, "speed": 5,  "depth": 7, "passes": 2, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "termico",       "name": "Vinilo textil termotransferible",   "pressure": 8,  "speed": 8,  "depth": 2, "passes": 1, "blade": "ratchet", "tool": 1, "mat": 1},
-  {"id": "pluma",         "name": "Dibujar con pluma (carro 2)",       "pressure": 5,  "speed": 15, "depth": null, "passes": 1, "blade": "pen", "tool": 2, "mat": 1}
+  {"id": "vinilo",        "name": "Vinilo adhesivo (kiss cut)",        "pressure": 10, "speed": 10, "depth": 1, "passes": 1, "blade_id": "ratchet", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "vinilo_die",    "name": "Vinilo (corte completo)",           "pressure": 20, "speed": 8,  "depth": 3, "passes": 1, "blade_id": "ratchet", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "sticker_papel", "name": "Papel adhesivo sticker (kiss cut)", "pressure": 12, "speed": 8,  "depth": 2, "passes": 1, "blade_id": "ratchet", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "papel_80",      "name": "Papel 80 g",                        "pressure": 12, "speed": 10, "depth": 2, "passes": 1, "blade_id": "ratchet", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "cartulina",     "name": "Cartulina 200-250 g",               "pressure": 25, "speed": 6,  "depth": 5, "passes": 1, "blade_id": "ratchet", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "cartulina_2p",  "name": "Cartulina gruesa (2 pasadas)",      "pressure": 33, "speed": 5,  "depth": 7, "passes": 2, "blade_id": "ratchet_deep", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "termico",       "name": "Vinilo textil termotransferible",   "pressure": 8,  "speed": 8,  "depth": 2, "passes": 1, "blade_id": "ratchet", "tool": 1, "mat": 1, "return_home": true},
+  {"id": "pluma",         "name": "Dibujar con pluma",                 "pressure": 5,  "speed": 15, "depth": null, "passes": 1, "blade_id": "pen", "tool": 1, "mat": 1, "return_home": true}
 ]
