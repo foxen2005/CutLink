@@ -152,6 +152,12 @@
     previewStats: $('preview-stats'),
 
     btnCut: $('btn-cut'),
+    confirmBox: $('confirm-box'),
+    confirmTitle: $('confirm-title'),
+    confirmGrid: $('confirm-grid'),
+    confirmWarn: $('confirm-warn'),
+    btnCutCancel: $('btn-cut-cancel'),
+    btnCutConfirm: $('btn-cut-confirm'),
     jobBox: $('job-box'),
     progressBar: $('progress-bar'),
     jobMsg: $('job-msg'),
@@ -961,29 +967,69 @@
   // ---------------------------------------------------------------------------
   // Cortar / abortar
   // ---------------------------------------------------------------------------
+  // Paso 1: CORTAR muestra la ficha del trabajo en línea (nada de confirm() del sistema)
   function doCut() {
     if (!bridgeOnline) { logErr('Bridge no responde'); return; }
     if (!el.selMaterial.value) { logErr('Elige un material'); return; }
     var m = currentMaterial();
+    var b = currentBlade();
     var ov = buildOverrides();
-    var modeTxt = { selection: 'la selección', layer: 'la capa "' + el.selLayer.value + '"', all: 'todo el documento' }[currentMode()];
-    var msg = '¿Enviar a cortar ' + modeTxt + '?\n\n' +
-      'Material: ' + (m ? m.name : el.selMaterial.value) + '\n' +
-      'Cuchilla: ' + (currentBlade() ? currentBlade().name : ov.blade_id) + '\n' +
-      'Presión ' + ov.pressure + ' · Velocidad ' + ov.speed + ' · Pasadas ' + ov.passes +
-      (ov.depth ? ' · Prof. ' + ov.depth : '') + ' · Herramienta ' + ov.tool + '\n' +
-      'Mat: ' + ['Sin mat', '12x12', '12x24'][ov.mat] +
-      (el.chkPnc.checked ? '\nPrint & Cut ACTIVO (' + (pncMode() === 'manual' ? 'MANUAL: cuchilla sobre el cuadrado' : 'automático') + ', inset ' + el.inInset.value + ' mm)' : '') +
-      (onlyStrokeColor() ? '\nSolo trazos ' + onlyStrokeColor() : '') +
-      (el.selImages.value !== 'ignore' ? '\nImágenes: ' + (el.selImages.value === 'trace' ? 'silueta automática' : 'rectángulo') + ' +' + (parseFloat(el.inImageMargin.value) || 0) + ' mm' : '');
-    if (!window.confirm(msg)) { log('Corte cancelado por el usuario'); return; }
+    var mode = currentMode();
+    var modeTxt = { selection: 'Selección', layer: 'Capa "' + el.selLayer.value + '"', all: 'Todo el documento' }[mode];
+    var docTxt = docInfo ? (docInfo.name + ' · ' + docInfo.artboard.w_mm.toFixed(0) + ' × ' + docInfo.artboard.h_mm.toFixed(0) + ' mm') : '';
 
+    var rows = [
+      ['Qué', modeTxt + (docTxt ? ' — ' + docTxt : ''), true],
+      ['Material', m ? m.name : el.selMaterial.value, true],
+      ['Cuchilla', (b ? b.name : ov.blade_id) + ' · carro ' + ov.tool, false],
+      ['Presión / Vel.', ov.pressure + ' / ' + ov.speed + (ov.depth ? ' · prof. ' + ov.depth : '') + (ov.passes > 1 ? ' · ' + ov.passes + ' pasadas' : ''), false],
+      ['Mat', ['Sin mat', '12 × 12', '12 × 24'][ov.mat] + (ov.return_home ? ' · vuelve al origen' : ''), false]
+    ];
+    if (el.chkPnc.checked) {
+      rows.push(['Print & Cut', (pncMode() === 'manual' ? 'Manual (cuchilla sobre el cuadrado)' : 'Automático') +
+        ' · inset ' + el.inInset.value + ' / ' + el.inInsetBottom.value + ' mm', true]);
+    }
+    if (onlyStrokeColor()) rows.push(['Solo trazos', onlyStrokeColor(), false]);
+    if (el.selImages.value !== 'ignore') {
+      rows.push(['Imágenes', (el.selImages.value === 'trace' ? 'Silueta automática' : 'Rectángulo') + ' +' + (parseFloat(el.inImageMargin.value) || 0) + ' mm', false]);
+    }
+    if (lastDryRun && lastDryRun.stats) {
+      rows.push(['Vista previa', lastDryRun.stats.paths + ' trazos · ' + Number(lastDryRun.stats.length_mm).toFixed(0) + ' mm', false]);
+    }
+
+    el.confirmTitle.textContent = modeTxt;
+    el.confirmGrid.innerHTML = '';
+    rows.forEach(function (r) {
+      var dt = document.createElement('dt'); dt.textContent = r[0];
+      var dd = document.createElement('dd'); dd.textContent = r[1]; if (r[2]) dd.className = 'strong';
+      el.confirmGrid.appendChild(dt); el.confirmGrid.appendChild(dd);
+    });
+    var warn = [];
+    if (el.chkPnc.checked && docInfo && !docInfo.hasRegmarks) warn.push('Print & Cut activo pero el documento no tiene marcas.');
+    if (!lastDryRun) warn.push('No has generado vista previa: se corta lo que exporte Illustrator.');
+    if (lastStatus && lastStatus.state === 'unloaded') warn.push('La máquina indica que no hay material cargado.');
+    el.confirmWarn.hidden = warn.length === 0;
+    el.confirmWarn.textContent = warn.join(' ');
+
+    el.btnCut.hidden = true;
+    el.confirmBox.hidden = false;
+    el.btnCutConfirm.focus();
+  }
+
+  function cancelCut() {
+    el.confirmBox.hidden = true;
+    el.btnCut.hidden = false;
+    el.btnCut.focus();
+  }
+
+  // Paso 2: "Cortar ahora" envía el trabajo al bridge
+  function confirmCut() {
+    var ov = buildOverrides();
+    el.confirmBox.hidden = true;
+    el.btnCut.hidden = false;
     el.btnCut.disabled = true;
     refreshDoc().then(function (info) {
       if (!info) throw new Error('No hay documento abierto');
-      if (el.chkPnc.checked && !info.hasRegmarks) {
-        logErr('Aviso: Print & Cut activo pero el documento no tiene marcas (agrega marcas e imprime antes).');
-      }
       return exportSvg();
     }).then(function (exp) {
       return bridgePost('/cut', {
@@ -1136,6 +1182,12 @@
 
     el.btnPreview.addEventListener('click', doPreview);
     el.btnCut.addEventListener('click', doCut);
+    el.btnCutCancel.addEventListener('click', cancelCut);
+    el.btnCutConfirm.addEventListener('click', confirmCut);
+    // Esc cancela la confirmación desde cualquier control del panel
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && !el.confirmBox.hidden) { ev.preventDefault(); cancelCut(); }
+    });
     el.btnAbort.addEventListener('click', doAbort);
 
     // Redibujar preview al cambiar tamaño del panel

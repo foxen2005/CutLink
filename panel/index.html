@@ -255,6 +255,19 @@
     <!-- ===== CORTAR ===== -->
     <section class="card" id="sec-cut">
       <button id="btn-cut" class="btn btn-cut">CORTAR</button>
+      <!-- Confirmación en línea (sin modal): ficha del trabajo antes de enviar a la máquina -->
+      <div id="confirm-box" class="confirm" role="region" aria-labelledby="confirm-title" hidden>
+        <div class="confirm-head">
+          <span class="confirm-kicker">Enviar a la Cameo</span>
+          <span id="confirm-title" class="confirm-title"></span>
+        </div>
+        <dl class="confirm-grid" id="confirm-grid"></dl>
+        <div id="confirm-warn" class="confirm-warn" hidden></div>
+        <div class="row confirm-actions">
+          <button id="btn-cut-cancel" class="btn">Cancelar</button>
+          <button id="btn-cut-confirm" class="btn btn-primary">Cortar ahora</button>
+        </div>
+      </div>
       <div id="job-box" hidden>
         <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
         <div class="row">
