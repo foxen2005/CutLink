@@ -104,3 +104,9 @@ def test_regmark_setup_uses_thickness_and_length():
 def test_manual_regmark_uses_TB23_from_current_position():
     r = RegmarkSettings(enabled=True, manual=True, inset_mm=10, inset_bottom_mm=25, page_w_mm=210, page_h_mm=297)
     assert regmark_search_command(r, (5.0, 5.0)) == "TB23,5240,3800"
+
+
+def test_search_offset_shifts_start_point_and_clamps():
+    r = RegmarkSettings(enabled=True, inset_mm=10, page_w_mm=210, page_h_mm=297, search_x_mm=5, search_y_mm=-15)
+    # top = 10 - 15 -> se recorta a 0; left = 10 + 5
+    assert regmark_search_command(r) == "TB123,5540,3800,0,300"

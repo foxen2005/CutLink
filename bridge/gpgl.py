@@ -110,6 +110,10 @@ class RegmarkSettings:
     page_h_mm: float = 0.0
     calib_x_mm: float = 0.0
     calib_y_mm: float = 0.0
+    # Ajuste del punto de arranque de la búsqueda automática (TB123 top/left).
+    # Se obtiene con la calibración por barrido; corrige la posición de carga real del papel.
+    search_x_mm: float = 0.0
+    search_y_mm: float = 0.0
 
     @property
     def bottom_mm(self) -> float:
@@ -164,9 +168,16 @@ def regmark_search_command(r: RegmarkSettings, mat_offset_mm=(0.0, 0.0)) -> str:
     (el usuario dejó la cuchilla sobre el cuadrado)."""
     if r.manual:
         return f"TB23,{mm(r.height_mm)},{mm(r.width_mm)}"
-    top = r.inset_mm + mat_offset_mm[1]
-    left = r.inset_mm + mat_offset_mm[0]
+    top = max(0.0, r.inset_mm + mat_offset_mm[1] + r.search_y_mm)
+    left = max(0.0, r.inset_mm + mat_offset_mm[0] + r.search_x_mm)
     return f"TB123,{mm(r.height_mm)},{mm(r.width_mm)},{mm(top)},{mm(left)}"
+
+
+# Orden del barrido de calibración: primero el nominal, luego alrededor en espiral
+SWEEP_OFFSETS_MM = [(0, 0), (20, 0), (-20, 0), (0, 20), (0, -20),        # sensor ~20 mm de la cuchilla (Jean)
+                    (20, 20), (-20, 20), (20, -20), (-20, -20),
+                    (10, 0), (-10, 0), (0, 10), (0, -10), (25, 0), (-25, 0), (0, 25), (0, -25),
+                    (5, 0), (-5, 0), (0, 5), (0, -5), (15, 0), (-15, 0), (0, 15), (0, -15)]
 
 
 def plot_commands(paths: Iterable[Polyline], bbox_mm: tuple[float, float, float, float],
@@ -302,6 +313,50 @@ class Cameo:
         self.send("FN0")
         self.send(f"O{mm(dy_mm)},{mm(dx_mm)}")
 
+    def find_regmarks(self, regmarks: RegmarkSettings, mat_off=(0.0, 0.0)) -> bytes:
+        """Ejecuta la búsqueda de marcas; devuelve la respuesta cruda (b'0' = ok)."""
+        for c in regmark_commands(regmarks):
+            self.send(c)
+        return self.query(regmark_search_command(regmarks, mat_off), 40000)
+
+    def regmark_test(self, regmarks: RegmarkSettings, settings: CutSettings,
+                     sweep: bool = False,
+                     progress: Callable[[float, str], None] | None = None,
+                     abort: threading.Event | None = None) -> dict:
+        """Solo busca las marcas, sin cortar. Con sweep=True prueba varios puntos
+        de arranque (SWEEP_OFFSETS_MM) hasta que la máquina responda 0 y devuelve
+        el ajuste que funcionó, para guardarlo como search_x/y."""
+        report = progress or (lambda p, m: None)
+        self.initialize()
+        st = self.status()
+        if st == "unloaded":
+            raise MachineError("No hay material cargado en la máquina")
+        for c in (f"TG{settings.mat}", "FN0", "TB50,0"):
+            self.send(c)
+        mat_off = (settings.mat_offset_x_mm, settings.mat_offset_y_mm) if settings.mat else (0.0, 0.0)
+        base_x, base_y = regmarks.search_x_mm, regmarks.search_y_mm
+        offsets = SWEEP_OFFSETS_MM if sweep else [(0, 0)]
+        attempts = []
+        for i, (dx, dy) in enumerate(offsets):
+            if abort is not None and abort.is_set():
+                raise JobAborted()
+            regmarks.search_x_mm, regmarks.search_y_mm = base_x + dx, base_y + dy
+            report(i / len(offsets), f"Buscando marcas: arranque X{regmarks.search_x_mm:+.0f} Y{regmarks.search_y_mm:+.0f} mm "
+                                     f"({i + 1}/{len(offsets)})")
+            resp = self.find_regmarks(regmarks, mat_off)
+            ok = resp.strip() == b"0"
+            attempts.append({"search_x_mm": regmarks.search_x_mm, "search_y_mm": regmarks.search_y_mm,
+                             "resp": resp.decode("ascii", "replace").strip(), "ok": ok})
+            if ok:
+                for c in ("SO0", "FN0"):
+                    self.send(c)
+                return {"found": True, "search_x_mm": regmarks.search_x_mm,
+                        "search_y_mm": regmarks.search_y_mm, "attempts": attempts}
+        for c in ("SO0", "FN0"):
+            self.send(c)
+        regmarks.search_x_mm, regmarks.search_y_mm = base_x, base_y
+        return {"found": False, "attempts": attempts}
+
     # -- trabajo completo ------------------------------------------------------
     def run_job(self, paths: list[Polyline], bbox_mm, settings: CutSettings,
                 regmarks: RegmarkSettings | None = None,
@@ -336,9 +391,7 @@ class Cameo:
         offset = (-mat_off[0], -mat_off[1])
         if regmarks and regmarks.enabled:
             report(0.05, "Buscando marcas de registro")
-            for c in regmark_commands(regmarks):
-                self.send(c)
-            resp = self.query(regmark_search_command(regmarks, mat_off), 40000)
+            resp = self.find_regmarks(regmarks, mat_off)
             if resp.strip() != b"0":
                 raise MachineError(f"No se encontraron las marcas de registro (resp={resp!r})")
             # Origen pasa a ser la marca superior izquierda (+ calibración)

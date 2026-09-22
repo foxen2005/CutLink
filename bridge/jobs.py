@@ -76,6 +76,8 @@ def build_regmarks(d: dict | None) -> RegmarkSettings | None:
         page_h_mm=float(d.get("page_h_mm", 0.0)),
         calib_x_mm=float(d.get("calib_x_mm", 0.0)),
         calib_y_mm=float(d.get("calib_y_mm", 0.0)),
+        search_x_mm=float(d.get("search_x_mm") or 0.0),
+        search_y_mm=float(d.get("search_y_mm") or 0.0),
     )
 
 
@@ -138,6 +140,8 @@ class JobState:
     message: str = ""
     started: float | None = None
     finished: float | None = None
+    kind: str = "cut"          # cut | regmark-test
+    result: dict | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -202,6 +206,51 @@ class JobRunner:
 
     def abort(self) -> None:
         self._abort.set()
+
+    def start_regmark_test(self, print_and_cut: dict, material_id=None, overrides=None,
+                           sweep: bool = False) -> str:
+        """Busca las marcas sin cortar (opcionalmente barriendo puntos de arranque)."""
+        with self._lock:
+            if self.busy:
+                raise RuntimeError("Ya hay un trabajo en curso")
+            if studio_running():
+                raise RuntimeError("Cierra Silhouette Studio antes: se queda con la comunicación de la máquina")
+            settings = build_settings(material_id, overrides)
+            regmarks = build_regmarks(dict(print_and_cut or {}, enabled=True))
+            if regmarks.page_w_mm <= 0 or regmarks.page_h_mm <= 0:
+                raise ValueError("Faltan las dimensiones de la hoja (page_w_mm/page_h_mm)")
+            job_id = uuid.uuid4().hex[:8]
+            self.state = JobState(id=job_id, state="running", message="Preparando",
+                                  started=time.time(), kind="regmark-test")
+            self._abort.clear()
+            self._thread = threading.Thread(target=self._run_regmark_test,
+                                            args=(regmarks, settings, sweep), daemon=True)
+            self._thread.start()
+            return job_id
+
+    def _run_regmark_test(self, regmarks, settings, sweep):
+        def progress(p, msg):
+            self.state.progress, self.state.message = p, msg
+        try:
+            with Cameo() as cam:
+                res = cam.regmark_test(regmarks, settings, sweep, progress, self._abort)
+            self.state.result = res
+            if res["found"]:
+                self.state.state = "done"
+                self.state.message = (f"Marcas encontradas con arranque X{res['search_x_mm']:+.0f} "
+                                      f"Y{res['search_y_mm']:+.0f} mm")
+            else:
+                self.state.state = "error"
+                last = res["attempts"][-1]["resp"] if res["attempts"] else "?"
+                self.state.message = f"No se encontraron las marcas en {len(res['attempts'])} intento(s) (resp={last})"
+        except JobAborted:
+            self.state.state, self.state.message = "aborted", "Abortado por el usuario"
+        except (MachineError, DeviceNotFound, DeviceTimeout, OSError, ValueError) as e:
+            self.state.state, self.state.message = "error", str(e)
+        except Exception as e:  # noqa: BLE001
+            self.state.state, self.state.message = "error", f"{type(e).__name__}: {e}"
+        finally:
+            self.state.finished = time.time()
 
     def jog(self, dx_mm: float, dy_mm: float) -> None:
         """Mueve el carro en relativo (para posicionar sobre la marca en modo manual)."""

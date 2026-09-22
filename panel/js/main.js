@@ -139,6 +139,10 @@
     inMatX: $('in-matx'),
     inMatY: $('in-maty'),
     inCalX: $('in-calx'),
+    inSearchX: $('in-searchx'),
+    inSearchY: $('in-searchy'),
+    btnRegmarkTest: $('btn-regmark-test'),
+    btnRegmarkSweep: $('btn-regmark-sweep'),
     inCalY: $('in-caly'),
     btnAddRegmarks: $('btn-add-regmarks'),
     btnRemoveRegmarks: $('btn-remove-regmarks'),
@@ -256,7 +260,7 @@
     var st = lastStatus || {};
     var job = lastJob || {};
     if (job.state === 'running') {
-      setStatus('busy', 'Cortando…');
+      setStatus('busy', job.kind === 'regmark-test' ? 'Buscando marcas…' : 'Cortando…');
       el.btnCut.disabled = true;
       return;
     }
@@ -316,8 +320,16 @@
       if (!materialsLoaded) loadMaterials();
       return bridgeGet('/job', 2500).then(function (job) {
         lastJob = job;
-        if (prevJobState === 'running' && job.state === 'done') logOk('Corte terminado: ' + (job.message || ''));
-        if (prevJobState === 'running' && job.state === 'error') logErr('Corte con error: ' + (job.message || ''));
+        if (prevJobState === 'running' && job.state === 'done') {
+          logOk((job.kind === 'regmark-test' ? 'Búsqueda OK: ' : 'Corte terminado: ') + (job.message || ''));
+          // La calibración por barrido devuelve el ajuste que funcionó: lo guardamos
+          if (job.kind === 'regmark-test' && job.result && job.result.found) {
+            el.inSearchX.value = job.result.search_x_mm;
+            el.inSearchY.value = job.result.search_y_mm;
+            saveSearchOffset();
+          }
+        }
+        if (prevJobState === 'running' && job.state === 'error') logErr((job.kind === 'regmark-test' ? 'Búsqueda: ' : 'Corte con error: ') + (job.message || ''));
         prevJobState = job.state;
       }).catch(function () { lastJob = null; });
     }).catch(function () {
@@ -797,8 +809,29 @@
       page_w_mm: (docInfo && docInfo.artboard.w_mm) || exp.w_mm,
       page_h_mm: (docInfo && docInfo.artboard.h_mm) || exp.h_mm,
       calib_x_mm: parseFloat(el.inCalX.value) || 0,
-      calib_y_mm: parseFloat(el.inCalY.value) || 0
+      calib_y_mm: parseFloat(el.inCalY.value) || 0,
+      search_x_mm: parseFloat(el.inSearchX.value) || 0,
+      search_y_mm: parseFloat(el.inSearchY.value) || 0
     };
+  }
+
+  function saveSearchOffset() {
+    try { localStorage.setItem('cameocut.search', JSON.stringify({ x: el.inSearchX.value, y: el.inSearchY.value })); } catch (e) {}
+  }
+
+  // Busca las marcas sin cortar (un intento con el ajuste actual, o barrido)
+  function regmarkTest(sweep) {
+    if (!bridgeOnline) { logErr('Bridge no responde'); return; }
+    if (!docInfo) { logErr('No hay documento'); return; }
+    if (sweep && !window.confirm('El barrido prueba hasta 25 puntos de arranque; cada fallo tarda ~20 s (hasta 5 min). ¿Continuar?')) return;
+    var pnc = printAndCutPayload({ w_mm: docInfo.artboard.w_mm, h_mm: docInfo.artboard.h_mm });
+    pnc.enabled = true;
+    bridgePost('/regmark-test', { print_and_cut: pnc, material_id: el.selMaterial.value, overrides: buildOverrides(), sweep: !!sweep }, 10000)
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.error || 'No se pudo iniciar la búsqueda');
+        log(sweep ? 'Calibración por barrido iniciada' : 'Buscando marcas…');
+        setTimeout(poll, 500);
+      }).catch(function (e) { logErr(e.message); });
   }
 
   // ---------------------------------------------------------------------------
@@ -1081,6 +1114,10 @@
       try { localStorage.setItem('cameocut.pnc', el.chkPnc.checked ? '1' : '0'); } catch (e) {}
     });
     el.btnAddRegmarks.addEventListener('click', addRegmarks);
+    el.btnRegmarkTest.addEventListener('click', function () { regmarkTest(false); });
+    el.btnRegmarkSweep.addEventListener('click', function () { regmarkTest(true); });
+    el.inSearchX.addEventListener('change', saveSearchOffset);
+    el.inSearchY.addEventListener('change', saveSearchOffset);
     document.querySelectorAll('input[name="pnc-mode"]').forEach(function (r) {
       r.addEventListener('change', function () {
         el.pncManualBox.hidden = pncMode() !== 'manual';
@@ -1120,6 +1157,10 @@
     clearPreview();
     bindEvents();
     restoreMatSettings();
+    try {
+      var so = JSON.parse(localStorage.getItem('cameocut.search') || 'null');
+      if (so) { el.inSearchX.value = so.x; el.inSearchY.value = so.y; }
+    } catch (e) {}
     try {
       var pm = localStorage.getItem('cameocut.pncmode');
       var pr = pm && document.querySelector('input[name="pnc-mode"][value="' + pm + '"]');

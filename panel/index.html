@@ -221,6 +221,21 @@
           <input type="number" id="in-caly" step="0.1" value="0">
         </div>
       </div>
+      <!-- El sensor óptico no está donde la cuchilla: el punto de arranque de la búsqueda se corrige aquí -->
+      <div class="grid2" id="search-box">
+        <div class="field">
+          <label for="in-searchx">Ajuste búsqueda X (mm)</label>
+          <input type="number" id="in-searchx" step="1" value="0" title="Desplaza el punto donde la máquina empieza a buscar el cuadrado (sensor vs. cuchilla)">
+        </div>
+        <div class="field">
+          <label for="in-searchy">Ajuste búsqueda Y (mm)</label>
+          <input type="number" id="in-searchy" step="1" value="0">
+        </div>
+      </div>
+      <div class="row">
+        <button id="btn-regmark-test" class="btn small" title="Solo busca las marcas con el ajuste actual, sin cortar">Probar búsqueda</button>
+        <button id="btn-regmark-sweep" class="btn small" title="Prueba varios puntos de arranque hasta que la máquina encuentre las marcas y guarda el ajuste (2–5 min)">Calibrar (barrido)</button>
+      </div>
       <div class="row">
         <button id="btn-add-regmarks" class="btn small">Agregar marcas al documento</button>
         <button id="btn-remove-regmarks" class="btn small">Quitar marcas</button>
