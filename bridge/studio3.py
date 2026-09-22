@@ -4,15 +4,13 @@ Lector de archivos Silhouette Studio (.studio3) → SVG + PNGs.
 Formato deducido por ingeniería inversa sobre archivos reales (no hay documentación):
 - Cabecera "silhouette05;" + tabla de 14 enteros de 64 bits (tamaños de sección). El
   documento vive en la sección 1; las secciones 4/5 son blobs constantes.
-- Trazados: cadena de registros de punto. Ancla curva = `01 21 00 00 00` + x,y (float32,
-  mm, coordenadas locales) + `01` + manejador entrada (dx,dy) + `01` + manejador salida
-  (dx,dy) + `00 01 00` (34 bytes). Punto recto = `01 11 00 00 00` + x,y (13 bytes).
-  Tras la cadena viene una lista de puntos ya en coordenadas de página (extremos del
-  trazado) con la que se deduce la traslación local→página.
-- Textos: Studio NO guarda contornos. Un objeto `create_textshape` va seguido de un
-  registro "Cut Union" por carácter (fuente + carácter de 1 byte antes de su UUID) y de
-  4 puntos rectos con la caja del bloque en página. Los contornos se regeneran con la
-  fuente al importar.
+- Geometría: listas de puntos ya en coordenadas de página (mm, incluida la transformación
+  del grupo): cabecera `01 <n-1> 00 00 00` + n registros {x, y, flag, [in dx dy], flag,
+  [out dx dy]}. Así van los trazados, los contornos de cada letra (soldados, "Cut Union")
+  y las cajas de corte pop-out de las imágenes.
+- Textos: objeto `create_textshape` + un registro "Cut Union" por carácter (fuente y la
+  letra de 1 byte antes de su UUID) + caja del bloque (`01 03` + 4 esquinas). Sirven como
+  metadato; la forma real son las listas anteriores.
 - Imágenes: objeto con el nombre de archivo, cuadrado unitario (−1…1) y 4 esquinas en
   página; los PNG/JPEG viven en un pool al final, precedidos por `nombre_hash`.
 - Miniatura PNG embebida (la primera imagen, pequeña).
@@ -27,15 +25,21 @@ import re
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 MAGIC = b"silhouette05;"
 CURVE = b"\x01\x21\x00\x00\x00"
 LINE = b"\x01\x11\x00\x00\x00"
 NUL = b"\x00"
+CR = "\r"                                             # separador de línea en los textos de Studio
 MATRIX_MARK = bytes([2, 0, 0, 0, 1, 1, 0x39, 0, 0, 0])   # sigue a la matriz (tx,ty,a,b,c,d) de un objeto
 QUAD_MARK = bytes([1, 3, 0, 0, 0])                    # lista de 4 esquinas en página (x,y + 2 bytes c/u)
 CUTUNION_RE = rb"\x08\x00\x00\x00cutunion"            # registro por carácter de un texto
 LIST_RE = rb"\x01([\x01-\xff])\x00\x00\x00"           # cabecera de lista de puntos: 01 <n-1> 00 00 00
+PNG_SIG = rb"\x89PNG\r\n\x1a\n"
+JPEG_SIG = rb"\xff\xd8\xff[\xdb\xe0\xe1\xe2\xee]"
+JPEG_EOI = b"\xff\xd9"
+IMAGE_NAME_RE = rb"([\w \-\.\(\)]+\.(?:png|jpe?g))_[0-9a-f]+"   # 'nombre.png_hash' antes de cada imagen
 # letra de un registro "Cut Union": cadena de 1 byte (prefijo de longitud 1) seguida de su UUID
 LETTER_RE = rb"\x01\x00\x00\x00(.)[\x00-\x20]{0,8}\x20\x00\x00\x00[0-9a-f]{32}"
 KNOWN_PAGES = {(210.0, 297.0), (297.0, 420.0), (215.9, 279.4), (304.8, 304.8), (304.8, 609.6),
@@ -255,25 +259,47 @@ def _parse_texts(data: bytes, warnings: list[str]) -> list[TextObj]:
 # ---------------------------------------------------------------------------
 # imágenes
 # ---------------------------------------------------------------------------
-def _image_pool(data: bytes) -> dict[str, tuple[bytes, str]]:
-    """nombre → (bytes, kind) de las imágenes embebidas, buscando el nombre_hash previo a cada una."""
+def _jpeg_end(data: bytes, off: int) -> int:
+    """Fin real de un JPEG: salta los segmentos (APPn puede llevar una miniatura con su
+    propio FFD9) hasta SOS y busca el EOI a partir de ahí."""
+    k = off + 2
+    while k + 4 <= len(data) and data[k] == 0xFF:
+        marker = data[k + 1]
+        if marker == 0xDA:                       # SOS: datos comprimidos hasta EOI
+            e = data.find(JPEG_EOI, k + 2)
+            return e + 2 if e > 0 else -1
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            k += 2
+            continue
+        seg = struct.unpack_from(">H", data, k + 2)[0]
+        k += 2 + seg
+    e = data.find(JPEG_EOI, off)
+    return e + 2 if e > 0 else -1
+
+
+def _image_pool(data: bytes) -> dict[str, tuple[bytes, str, str]]:
+    """clave `nombre_hash` → (bytes, kind, nombre) de las imágenes embebidas. La clave incluye
+    el hash: dos archivos con el mismo nombre pero distinto contenido no se confunden."""
     pool = {}
-    sigs = [(m.start(), "png") for m in re.finditer(rb"\x89PNG\r\n\x1a\n", data)]
-    sigs += [(m.start(), "jpeg") for m in re.finditer(rb"\xff\xd8\xff[\xdb\xe0\xe1\xe2\xee]", data)]
+    sigs = [(m.start(), "png") for m in re.finditer(PNG_SIG, data)]
+    sigs += [(m.start(), "jpeg") for m in re.finditer(JPEG_SIG, data)]
     sigs.sort()
     for off, kind in sigs:
         if kind == "png":
             end = data.find(b"IEND", off)
             end = end + 8 if end > 0 else -1
         else:
-            end = data.find(b"\xff\xd9", off)
-            end = end + 2 if end > 0 else -1
+            end = _jpeg_end(data, off)
         if end < 0:
             continue
         head = data[max(0, off - 600):off]
-        m = list(re.finditer(rb"([\w \-\.\(\)]+\.(?:png|jpe?g))_[0-9a-f]+", head, re.I))
-        name = m[-1].group(1).decode("latin-1") if m else f"image_{off:x}.{kind}"
-        pool.setdefault(name, (data[off:end], kind))
+        m = list(re.finditer(IMAGE_NAME_RE, head))
+        if m:
+            key = m[-1].group(0).decode("latin-1")
+            name = m[-1].group(1).decode("latin-1")
+        else:
+            key = name = f"image_{off:x}.{kind}"
+        pool.setdefault(key, (data[off:end], kind, name))
     return pool
 
 
@@ -281,31 +307,37 @@ def _parse_images(data: bytes, pool: dict, warnings: list[str]) -> list[ImageObj
     """Objetos imagen: nombre + cuadrado unitario + matriz 3x3 + caja de corte (01 03)."""
     images = []
     seen = set()
-    for name, (blob, kind) in pool.items():
-        pat = re.escape(name.encode("latin-1")) + rb"_[0-9a-f]+"
-        for m in re.finditer(pat, data):
-            o = m.start()
-            seg_end = min(len(data), o + 4000)
-            k = data.find(LINE, o, seg_end)
-            if k < 0:
-                continue
-            x, y = struct.unpack_from("<ff", data, k + 5)
-            if not (abs(abs(x) - 1.0) < 1e-6 and abs(abs(y) - 1.0) < 1e-6):
-                continue          # no es el registro de objeto (p. ej. el pool de bytes)
-            mk = data.find(MATRIX_MARK, k, seg_end)
-            if mk < 0 or mk - k > 0x400:
-                warnings.append(f"Imagen {name}: sin matriz de posición, se omite")
-                continue
-            tx, ty, a, b, c, d = struct.unpack_from("<6f", data, mk - 24)
-            if not all(_ok(v, 5000) for v in (tx, ty, a, b, c, d)):
-                continue
-            q = data.find(QUAD_MARK, mk, seg_end)
-            corners = _quad_at(data, q + 5) if q >= 0 else []
-            if o in seen:
-                continue
-            seen.add(o)
-            images.append(ImageObj(name=name, corners=corners, data=blob, kind=kind, offset=o,
-                                   matrix=(a, b, c, d, tx, ty)))
+    for m in re.finditer(IMAGE_NAME_RE, data):
+        o = m.start()
+        if o in seen:
+            continue
+        token = m.group(0).decode("latin-1")
+        # el token del registro del objeto y el del pool comparten prefijo pero el hash puede
+        # llevar un carácter de más/menos según el byte siguiente: emparejamos por prefijo
+        hit = next(((b, k, n) for key, (b, k, n) in pool.items()
+                    if key.startswith(token) or token.startswith(key)), None)
+        if hit is None:
+            continue
+        blob, kind, name = hit
+        seg_end = min(len(data), o + 4000)
+        k = data.find(LINE, o, seg_end)
+        if k < 0:
+            continue
+        x, y = struct.unpack_from("<ff", data, k + 5)
+        if not (abs(abs(x) - 1.0) < 1e-6 and abs(abs(y) - 1.0) < 1e-6):
+            continue          # no es el registro de objeto (p. ej. el propio pool de bytes)
+        mk = data.find(MATRIX_MARK, k, seg_end)
+        if mk < 0 or mk - k > 0x400:
+            warnings.append(f"Imagen {name}: sin matriz de posición, se omite")
+            continue
+        tx, ty, a, b, c, d = struct.unpack_from("<6f", data, mk - 24)
+        if not all(_ok(v, 5000) for v in (tx, ty, a, b, c, d)):
+            continue
+        q = data.find(QUAD_MARK, mk, seg_end)
+        corners = _quad_at(data, q + 5) if q >= 0 else []
+        seen.add(o)
+        images.append(ImageObj(name=name, corners=corners, data=blob, kind=kind, offset=o,
+                               matrix=(a, b, c, d, tx, ty)))
     images.sort(key=lambda im: im.offset)
     return images
 
@@ -323,7 +355,7 @@ def parse(path: str) -> Studio3Doc:
     texts = _parse_texts(data, warnings)
     pool = _image_pool(data)
     # la miniatura es la primera PNG pequeña sin nombre de archivo
-    pool = {n: v for n, v in pool.items() if not n.startswith("image_") or len(v[0]) > 400_000}
+    pool = {k: v for k, v in pool.items() if not k.startswith("image_") or len(v[0]) > 400_000}
     images = _parse_images(data, pool, warnings)
     return Studio3Doc(path=path, page_mm=page, shapes=shapes, texts=texts, images=images, warnings=warnings)
 
@@ -341,29 +373,47 @@ def to_svg(doc: Studio3Doc, out_dir: Path) -> str:
     for im in doc.images:
         fname = re.sub(r"[^\w\.\-]", "_", im.name)
         (out_dir / fname).write_bytes(im.data)
-        href = "file:///" + str((out_dir / fname).resolve()).replace("\\", "/")
+        # ruta absoluta como URL: percent-encoding para espacios/#/% y escape XML para &
+        href = "file:///" + quote(str((out_dir / fname).resolve()).replace("\\", "/"), safe="/:")
+        href = href.replace("&", "&amp;")
         a, b, c, d, tx, ty = im.matrix
         # la imagen ocupa el cuadrado unitario [-1,1]²; la matriz lo lleva a la página (mm)
         out.append(f'<image xlink:href="{href}" x="-1" y="-1" width="2" height="2" preserveAspectRatio="none" '
                    f'transform="matrix({a:.5f} {b:.5f} {c:.5f} {d:.5f} {tx:.3f} {ty:.3f})"/>')
         # (la caja de corte "pop-out" de la imagen ya sale como lista de puntos en doc.shapes)
     for s in doc.shapes:
-        tx, ty = 0.0, 0.0
         d = []
         p0 = s.points[0]
-        d.append(f"M {p0['x'] + tx:.3f} {p0['y'] + ty:.3f}")
+        d.append(f"M {p0['x']:.3f} {p0['y']:.3f}")
         for a, b in zip(s.points, s.points[1:] + ([s.points[0]] if s.closed else [])):
             if a["out"] or b["in"]:
                 c1 = (a["x"] + (a["out"][0] if a["out"] else 0), a["y"] + (a["out"][1] if a["out"] else 0))
                 c2 = (b["x"] + (b["in"][0] if b["in"] else 0), b["y"] + (b["in"][1] if b["in"] else 0))
-                d.append(f"C {c1[0] + tx:.3f} {c1[1] + ty:.3f} {c2[0] + tx:.3f} {c2[1] + ty:.3f} {b['x'] + tx:.3f} {b['y'] + ty:.3f}")
+                d.append(f"C {c1[0]:.3f} {c1[1]:.3f} {c2[0]:.3f} {c2[1]:.3f} {b['x']:.3f} {b['y']:.3f}")
             else:
-                d.append(f"L {b['x'] + tx:.3f} {b['y'] + ty:.3f}")
+                d.append(f"L {b['x']:.3f} {b['y']:.3f}")
         if s.closed:
             d.append("Z")
         out.append(f'<path d="{" ".join(d)}" fill="none" stroke="#e00000" stroke-width="0.25"/>')
-    # Los textos ya vienen como contornos (listas de puntos): no se emite <text>.
-    # doc.texts queda solo como metadato (cadena, fuente) para el informe del panel.
+    # Los textos normalmente ya vienen como contornos (listas de puntos). Si un bloque de
+    # texto no tiene ningún trazado dentro de su caja, se emite como <text> aproximado
+    # (Illustrator lo regenera con la fuente) y se avisa.
+    for t in doc.texts:
+        if not t.bbox:
+            continue
+        x0, y0, x1, y1 = t.bbox
+        inside = any(x0 - 1 <= p["x"] <= x1 + 1 and y0 - 1 <= p["y"] <= y1 + 1
+                     for sh in doc.shapes for p in sh.points[:1])
+        if inside:
+            continue
+        lines = t.text.split(CR)
+        line_h = (y1 - y0) / max(1, len(lines))
+        fam = (t.font or "Arial").replace('"', "")
+        doc.warnings.append(f"Texto '{t.text[:24]}' sin contornos guardados: se importa como texto ({fam})")
+        for i, ln in enumerate(lines):
+            ln = ln.replace("&", "&amp;").replace("<", "&lt;")
+            out.append(f'<text x="{x0:.3f}" y="{y0 + line_h * (i + 0.85):.3f}" font-family="{fam}" '
+                       f'font-size="{line_h * 0.8:.3f}" fill="none" stroke="#e00000" stroke-width="0.2">{ln}</text>')
     out.append("</svg>")
     return "\n".join(out)
 

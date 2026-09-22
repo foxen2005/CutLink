@@ -625,11 +625,12 @@ function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm) {
       tmpDoc.close(SaveOptions.DONOTSAVECHANGES);
       tmpDoc = null;
       app.activeDocument = doc;
-      group = target;
-      if (group.pageItems.length === 0) {
-        group.remove();
+      if (target.pageItems.length === 0) {
+        // group sigue en null: el bloque de limpieza cierra el documento nuevo vacío
+        target.remove();
         throw new Error("El SVG no contiene ítems importables");
       }
+      group = target;
     }
     group.name = cameoBaseName(svgFile);
 
