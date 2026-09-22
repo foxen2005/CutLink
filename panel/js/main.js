@@ -760,11 +760,22 @@
   // ---------------------------------------------------------------------------
   // Export SVG temporal
   // ---------------------------------------------------------------------------
+  // Los SVG temporales no se borran solos: conservamos los últimos `keep` y el resto fuera
+  function cleanupTmp(dir, keep) {
+    try {
+      var files = nodeFs.readdirSync(dir).filter(function (f) { return /\.svg$/i.test(f); }).sort();
+      files.slice(0, Math.max(0, files.length - keep)).forEach(function (f) {
+        try { nodeFs.unlinkSync(nodePath.join(dir, f)); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
   function tmpSvgPath() {
     var base;
     if (hasNode) {
       base = nodePath.join(nodeOs.tmpdir(), 'cameo-cut');
       try { nodeFs.mkdirSync(base, { recursive: true }); } catch (e) {}
+      cleanupTmp(base, 20);
     } else {
       // Fallback sin Node: File de ExtendScript crea la carpeta (outFile.parent.create()).
       var tmp = csInterface.getSystemPath(SystemPath.USER_DATA);
