@@ -1,0 +1,393 @@
+"""
+Lector de archivos Silhouette Studio (.studio3) → SVG + PNGs.
+
+Formato deducido por ingeniería inversa sobre archivos reales (no hay documentación):
+- Cabecera "silhouette05;" + tabla de 14 enteros de 64 bits (tamaños de sección). El
+  documento vive en la sección 1; las secciones 4/5 son blobs constantes.
+- Trazados: cadena de registros de punto. Ancla curva = `01 21 00 00 00` + x,y (float32,
+  mm, coordenadas locales) + `01` + manejador entrada (dx,dy) + `01` + manejador salida
+  (dx,dy) + `00 01 00` (34 bytes). Punto recto = `01 11 00 00 00` + x,y (13 bytes).
+  Tras la cadena viene una lista de puntos ya en coordenadas de página (extremos del
+  trazado) con la que se deduce la traslación local→página.
+- Textos: Studio NO guarda contornos. Un objeto `create_textshape` va seguido de un
+  registro "Cut Union" por carácter (fuente + carácter de 1 byte antes de su UUID) y de
+  4 puntos rectos con la caja del bloque en página. Los contornos se regeneran con la
+  fuente al importar.
+- Imágenes: objeto con el nombre de archivo, cuadrado unitario (−1…1) y 4 esquinas en
+  página; los PNG/JPEG viven en un pool al final, precedidos por `nombre_hash`.
+- Miniatura PNG embebida (la primera imagen, pequeña).
+
+Uso: python -m bridge.studio3 archivo.studio3 --out carpeta
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import struct
+from dataclasses import dataclass, field
+from pathlib import Path
+
+MAGIC = b"silhouette05;"
+CURVE = b"\x01\x21\x00\x00\x00"
+LINE = b"\x01\x11\x00\x00\x00"
+NUL = b"\x00"
+MATRIX_MARK = bytes([2, 0, 0, 0, 1, 1, 0x39, 0, 0, 0])   # sigue a la matriz (tx,ty,a,b,c,d) de un objeto
+QUAD_MARK = bytes([1, 3, 0, 0, 0])                    # lista de 4 esquinas en página (x,y + 2 bytes c/u)
+CUTUNION_RE = rb"\x08\x00\x00\x00cutunion"            # registro por carácter de un texto
+LIST_RE = rb"\x01([\x01-\xff])\x00\x00\x00"           # cabecera de lista de puntos: 01 <n-1> 00 00 00
+# letra de un registro "Cut Union": cadena de 1 byte (prefijo de longitud 1) seguida de su UUID
+LETTER_RE = rb"\x01\x00\x00\x00(.)[\x00-\x20]{0,8}\x20\x00\x00\x00[0-9a-f]{32}"
+KNOWN_PAGES = {(210.0, 297.0), (297.0, 420.0), (215.9, 279.4), (304.8, 304.8), (304.8, 609.6),
+               (279.4, 431.8), (152.4, 152.4), (203.2, 254.0), (203.2, 304.8), (210.0, 297.0)}
+FONT_RE = rb"\x00\x00\x00([A-Z][A-Za-z0-9 \-]{2,40})\x00"   # nombre de fuente con prefijo de longitud
+
+
+def _f(b: bytes, k: int) -> float:
+    return struct.unpack_from("<f", b, k)[0]
+
+
+def _ok(v: float, lim: float = 5000.0) -> bool:
+    return v == v and -lim <= v <= lim
+
+
+@dataclass
+class PathShape:
+    points: list[dict]          # {x,y,in:(dx,dy)|None,out:(dx,dy)|None}
+    closed: bool = True
+    offset: int = 0
+
+
+@dataclass
+class TextObj:
+    text: str
+    font: str
+    size_pt: float | None
+    bbox: tuple[float, float, float, float] | None      # página, mm
+    color: str | None = None
+    offset: int = 0
+
+
+@dataclass
+class ImageObj:
+    name: str
+    corners: list[tuple[float, float]]                  # 4 esquinas en página, mm
+    data: bytes = field(default=b"", repr=False)
+    kind: str = "png"
+    offset: int = 0
+    matrix: tuple[float, ...] = (1, 0, 0, 1, 0, 0)   # a b c d tx ty: x' = a·u + c·v + tx, y' = b·u + d·v + ty, u,v ∈ [-1,1]
+
+
+@dataclass
+class Studio3Doc:
+    path: str
+    page_mm: tuple[float, float]
+    shapes: list[PathShape]
+    texts: list[TextObj]
+    images: list[ImageObj]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------------------
+# utilidades de escaneo
+# ---------------------------------------------------------------------------
+def _page_size(data: bytes) -> tuple[float, float]:
+    for k in range(0, min(len(data), 0x4000) - 8):
+        w, h = struct.unpack_from("<ff", data, k)
+        if (round(w, 1), round(h, 1)) in KNOWN_PAGES:
+            return (round(w, 2), round(h, 2))
+    return (210.0, 297.0)
+
+
+def _rect_points_after(data: bytes, start: int, end: int, want: int = 4) -> list[tuple[float, float]]:
+    """Primeros `want` puntos rectos (01 11) entre start y end con coords de página."""
+    pts = []
+    k = data.find(LINE, start, end)
+    while k >= 0 and len(pts) < want:
+        x, y = struct.unpack_from("<ff", data, k + 5)
+        if _ok(x) and _ok(y) and not (abs(abs(x) - 1.0) < 1e-6 and abs(abs(y) - 1.0) < 1e-6):
+            pts.append((x, y))
+        k = data.find(LINE, k + 5, end)
+    return pts
+
+
+def _quad_at(data: bytes, k: int) -> list[tuple[float, float]]:
+    """4 esquinas (x,y float32 + 2 bytes de relleno) que siguen a QUAD_MARK."""
+    pts = []
+    for n in range(4):
+        if k + n * 10 + 8 > len(data):
+            return []
+        x, y = struct.unpack_from("<ff", data, k + n * 10)
+        if not (_ok(x, 5000) and _ok(y, 5000)):
+            return []
+        pts.append((x, y))
+    return pts
+
+
+# ---------------------------------------------------------------------------
+# trazados
+# ---------------------------------------------------------------------------
+def _point_lists(data: bytes, lo: int = 2, hi: int = 2000):
+    """Listas de puntos en coordenadas de página: cabecera `01 <n-1> 00 00 00` seguida de n
+    registros {x, y, flag, [in dx dy], flag, [out dx dy]} (flag 01 = hay manejador, 00 = no).
+    Es el formato con que Studio guarda trazados, contornos de letras y cajas de corte."""
+    for m in re.finditer(LIST_RE, data):
+        n = m.group(1)[0] + 1
+        if not (lo <= n <= hi):
+            continue
+        k = m.end()
+        pts = []
+        ok = True
+        for _ in range(n):
+            if k + 10 > len(data):
+                ok = False
+                break
+            x, y = struct.unpack_from("<ff", data, k)
+            k += 8
+            if not (_ok(x) and _ok(y)):
+                ok = False
+                break
+            handles = []
+            for _h in range(2):
+                fl = data[k]
+                k += 1
+                if fl == 1:
+                    if k + 8 > len(data):
+                        ok = False
+                        break
+                    dx, dy = struct.unpack_from("<ff", data, k)
+                    k += 8
+                    if not (_ok(dx, 500) and _ok(dy, 500)):
+                        ok = False
+                        break
+                    handles.append((dx, dy))
+                elif fl == 0:
+                    handles.append(None)
+                else:
+                    ok = False
+                    break
+            if not ok:
+                break
+            pts.append({"x": x, "y": y, "in": handles[0], "out": handles[1]})
+        if ok and len(pts) == n:
+            yield m.start(), k, pts
+
+
+def _parse_paths(data: bytes, warnings: list[str]) -> list[PathShape]:
+    tshapes = [m.start() for m in re.finditer(rb"create_textshape", data)]
+    shapes = []
+    for off, end, pts in _point_lists(data, lo=2):
+        if len(pts) < 2:
+            continue
+        xs = [p["x"] for p in pts]; ys = [p["y"] for p in pts]
+        w, h = max(xs) - min(xs), max(ys) - min(ys)
+        if w < 0.05 and h < 0.05:
+            continue
+        # la caja de un bloque de texto (4 puntos rectos tras create_textshape) no es geometría
+        if len(pts) == 4 and not any(p["in"] or p["out"] for p in pts) and any(0 < off - t < 3000 for t in tshapes):
+            continue
+        closed = len(pts) >= 3
+        shapes.append(PathShape(points=pts, closed=closed, offset=off))
+    return shapes
+
+
+# ---------------------------------------------------------------------------
+# textos
+# ---------------------------------------------------------------------------
+def _parse_texts(data: bytes, warnings: list[str]) -> list[TextObj]:
+    starts = [m.start() for m in re.finditer(CUTUNION_RE, data)]
+    tshapes = [m.start() for m in re.finditer(rb"create_textshape", data)]
+    # separadores = registros Cut Union sin letra (abren cada bloque de texto)
+    seps = []
+    for i, s in enumerate(starts):
+        e = starts[i + 1] if i + 1 < len(starts) else min(len(data), s + 1200)
+        mu = re.search(LETTER_RE, data[s:e], re.S)
+        if not mu or mu.group(1) == NUL:
+            seps.append(s)
+    texts: list[TextObj] = []
+    cur: TextObj | None = None
+    for i, s in enumerate(starts):
+        e = starts[i + 1] if i + 1 < len(starts) else min(len(data), s + 1200)
+        seg = data[s:e]
+        fm = re.search(FONT_RE, seg)
+        font = fm.group(1).decode() if fm else ""
+        size = None
+        if fm:
+            # tras la fuente: 7 bytes, float (altura de línea), 1 byte, float tamaño en pt
+            try:
+                size = _f(seg, fm.end() + 7 + 4 + 1)
+                if not (1 <= size <= 2000):
+                    size = None
+            except struct.error:
+                size = None
+        mu = re.search(LETTER_RE, seg, re.S)
+        ch = mu.group(1).decode("latin-1") if mu else None
+        if ch is None or ch == "\x00":
+            # separador = nuevo bloque de texto; su caja (4 puntos rectos) está tras el
+            # create_textshape que cierra el bloque (antes del siguiente separador)
+            nxt_sep = next((t for t in seps if t > s), len(data))
+            ts_in_block = [t for t in tshapes if s < t < nxt_sep]
+            bbox = None
+            if ts_in_block:
+                q = data.find(QUAD_MARK, ts_in_block[0], min(len(data), ts_in_block[0] + 3000))
+                pts = _quad_at(data, q + 5) if q >= 0 else []
+                if len(pts) < 4:   # sin caja de página: usamos la caja local (4 puntos rectos)
+                    pts = _rect_points_after(data, ts_in_block[0], min(len(data), ts_in_block[0] + 3000))
+                if len(pts) >= 4:
+                    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                    bbox = (min(xs), min(ys), max(xs), max(ys))
+                    if bbox[2] - bbox[0] < 1.0 or bbox[3] - bbox[1] < 1.0:
+                        bbox = None      # caja degenerada: no es la del texto
+            cur = TextObj(text="", font=font, size_pt=size, bbox=bbox, offset=s)
+            texts.append(cur)
+        else:
+            if cur is None:
+                cur = TextObj(text="", font=font, size_pt=size, bbox=None, offset=s)
+                texts.append(cur)
+            cur.text += ch
+            if not cur.font and font:
+                cur.font = font
+            if cur.size_pt is None and size:
+                cur.size_pt = size
+    return [t for t in texts if t.text.strip()]
+
+
+# ---------------------------------------------------------------------------
+# imágenes
+# ---------------------------------------------------------------------------
+def _image_pool(data: bytes) -> dict[str, tuple[bytes, str]]:
+    """nombre → (bytes, kind) de las imágenes embebidas, buscando el nombre_hash previo a cada una."""
+    pool = {}
+    sigs = [(m.start(), "png") for m in re.finditer(rb"\x89PNG\r\n\x1a\n", data)]
+    sigs += [(m.start(), "jpeg") for m in re.finditer(rb"\xff\xd8\xff[\xdb\xe0\xe1\xe2\xee]", data)]
+    sigs.sort()
+    for off, kind in sigs:
+        if kind == "png":
+            end = data.find(b"IEND", off)
+            end = end + 8 if end > 0 else -1
+        else:
+            end = data.find(b"\xff\xd9", off)
+            end = end + 2 if end > 0 else -1
+        if end < 0:
+            continue
+        head = data[max(0, off - 600):off]
+        m = list(re.finditer(rb"([\w \-\.\(\)]+\.(?:png|jpe?g))_[0-9a-f]+", head, re.I))
+        name = m[-1].group(1).decode("latin-1") if m else f"image_{off:x}.{kind}"
+        pool.setdefault(name, (data[off:end], kind))
+    return pool
+
+
+def _parse_images(data: bytes, pool: dict, warnings: list[str]) -> list[ImageObj]:
+    """Objetos imagen: nombre + cuadrado unitario + matriz 3x3 + caja de corte (01 03)."""
+    images = []
+    seen = set()
+    for name, (blob, kind) in pool.items():
+        pat = re.escape(name.encode("latin-1")) + rb"_[0-9a-f]+"
+        for m in re.finditer(pat, data):
+            o = m.start()
+            seg_end = min(len(data), o + 4000)
+            k = data.find(LINE, o, seg_end)
+            if k < 0:
+                continue
+            x, y = struct.unpack_from("<ff", data, k + 5)
+            if not (abs(abs(x) - 1.0) < 1e-6 and abs(abs(y) - 1.0) < 1e-6):
+                continue          # no es el registro de objeto (p. ej. el pool de bytes)
+            mk = data.find(MATRIX_MARK, k, seg_end)
+            if mk < 0 or mk - k > 0x400:
+                warnings.append(f"Imagen {name}: sin matriz de posición, se omite")
+                continue
+            tx, ty, a, b, c, d = struct.unpack_from("<6f", data, mk - 24)
+            if not all(_ok(v, 5000) for v in (tx, ty, a, b, c, d)):
+                continue
+            q = data.find(QUAD_MARK, mk, seg_end)
+            corners = _quad_at(data, q + 5) if q >= 0 else []
+            if o in seen:
+                continue
+            seen.add(o)
+            images.append(ImageObj(name=name, corners=corners, data=blob, kind=kind, offset=o,
+                                   matrix=(a, b, c, d, tx, ty)))
+    images.sort(key=lambda im: im.offset)
+    return images
+
+
+# ---------------------------------------------------------------------------
+# API
+# ---------------------------------------------------------------------------
+def parse(path: str) -> Studio3Doc:
+    data = Path(path).read_bytes()
+    if not data.startswith(MAGIC):
+        raise ValueError("No es un archivo Silhouette Studio (.studio3)")
+    warnings: list[str] = []
+    page = _page_size(data)
+    shapes = _parse_paths(data, warnings)
+    texts = _parse_texts(data, warnings)
+    pool = _image_pool(data)
+    # la miniatura es la primera PNG pequeña sin nombre de archivo
+    pool = {n: v for n, v in pool.items() if not n.startswith("image_") or len(v[0]) > 400_000}
+    images = _parse_images(data, pool, warnings)
+    return Studio3Doc(path=path, page_mm=page, shapes=shapes, texts=texts, images=images, warnings=warnings)
+
+
+def _color_hex(c) -> str:
+    return c or "#e00000"
+
+
+def to_svg(doc: Studio3Doc, out_dir: Path) -> str:
+    w, h = doc.page_mm
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+           f'width="{w}mm" height="{h}mm" viewBox="0 0 {w} {h}">',
+           # marco de página: el importador lo usa para alinear y luego lo elimina
+           f'<rect x="0" y="0" width="{w}" height="{h}" fill="none" stroke="none"/>']
+    for im in doc.images:
+        fname = re.sub(r"[^\w\.\-]", "_", im.name)
+        (out_dir / fname).write_bytes(im.data)
+        href = "file:///" + str((out_dir / fname).resolve()).replace("\\", "/")
+        a, b, c, d, tx, ty = im.matrix
+        # la imagen ocupa el cuadrado unitario [-1,1]²; la matriz lo lleva a la página (mm)
+        out.append(f'<image xlink:href="{href}" x="-1" y="-1" width="2" height="2" preserveAspectRatio="none" '
+                   f'transform="matrix({a:.5f} {b:.5f} {c:.5f} {d:.5f} {tx:.3f} {ty:.3f})"/>')
+        # (la caja de corte "pop-out" de la imagen ya sale como lista de puntos en doc.shapes)
+    for s in doc.shapes:
+        tx, ty = 0.0, 0.0
+        d = []
+        p0 = s.points[0]
+        d.append(f"M {p0['x'] + tx:.3f} {p0['y'] + ty:.3f}")
+        for a, b in zip(s.points, s.points[1:] + ([s.points[0]] if s.closed else [])):
+            if a["out"] or b["in"]:
+                c1 = (a["x"] + (a["out"][0] if a["out"] else 0), a["y"] + (a["out"][1] if a["out"] else 0))
+                c2 = (b["x"] + (b["in"][0] if b["in"] else 0), b["y"] + (b["in"][1] if b["in"] else 0))
+                d.append(f"C {c1[0] + tx:.3f} {c1[1] + ty:.3f} {c2[0] + tx:.3f} {c2[1] + ty:.3f} {b['x'] + tx:.3f} {b['y'] + ty:.3f}")
+            else:
+                d.append(f"L {b['x'] + tx:.3f} {b['y'] + ty:.3f}")
+        if s.closed:
+            d.append("Z")
+        out.append(f'<path d="{" ".join(d)}" fill="none" stroke="#e00000" stroke-width="0.25"/>')
+    # Los textos ya vienen como contornos (listas de puntos): no se emite <text>.
+    # doc.texts queda solo como metadato (cadena, fuente) para el informe del panel.
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def convert(path: str, out_dir: str | None = None) -> dict:
+    src = Path(path)
+    doc = parse(str(src))
+    out = Path(out_dir) if out_dir else src.with_suffix("") .parent / (src.stem + "_import")
+    out.mkdir(parents=True, exist_ok=True)
+    svg_path = out / (src.stem + ".svg")
+    svg_path.write_text(to_svg(doc, out), encoding="utf-8")
+    return {"ok": True, "svg_path": str(svg_path), "out_dir": str(out), "page_mm": list(doc.page_mm),
+            "stats": {"shapes": len(doc.shapes), "texts": len(doc.texts), "images": len(doc.images)},
+            "texts": [{"text": t.text, "font": t.font, "size_pt": t.size_pt, "bbox": t.bbox} for t in doc.texts],
+            "warnings": doc.warnings}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("file")
+    ap.add_argument("--out")
+    a = ap.parse_args(argv)
+    print(json.dumps(convert(a.file, a.out), ensure_ascii=False, indent=1, default=str))
+
+
+if __name__ == "__main__":
+    main()

@@ -10,6 +10,7 @@ Endpoints (JSON):
   POST /cut        {svg_path, material_id, overrides, only_stroke_color, print_and_cut}
   GET  /job        progreso del trabajo actual
   POST /abort
+  POST /studio3/convert {path} convierte un .studio3 a SVG + PNGs (importador)
   POST /regmark-test {print_and_cut, material_id, overrides, sweep} busca marcas sin cortar
   POST /jog        {dx_mm, dy_mm} mueve el carro en relativo (registro manual)
   GET  /blades                 perfiles de cuchilla (base + propios)
@@ -96,6 +97,9 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("only_stroke_color"), data.get("print_and_cut"),
                     data.get("images", "ignore"), float(data.get("image_margin_mm") or 0))
                 return self._json(200, {"ok": True, "job_id": job_id})
+            if self.path == "/studio3/convert":
+                from . import studio3
+                return self._json(200, studio3.convert(data["path"]))
             if self.path == "/regmark-test":
                 job_id = runner.start_regmark_test(
                     data.get("print_and_cut") or {}, data.get("material_id"),

@@ -11,6 +11,7 @@
  *   cameoAddRegmarks(insetMm)
  *   cameoRemoveRegmarks()
  *   cameoGetSelectionStrokeColors()
+ *   cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm)
  */
 
 // ---------------------------------------------------------------------------
@@ -492,5 +493,196 @@ function cameoGetSelectionStrokeColors() {
     return cameoJson(colors);
   } catch (e) {
     return "[]";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6. cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm)
+// ---------------------------------------------------------------------------
+// Coloca el SVG generado por el bridge (bridge/studio3 → SVG en mm, origen arriba-izquierda)
+// en Illustrator. Los <image href> relativos se resuelven respecto a la carpeta del SVG.
+
+/** Nombre de archivo sin extensión (para el título del documento nuevo). */
+function cameoBaseName(file) {
+  var n = String(file.displayName || file.name || "importado");
+  try { n = decodeURI(n); } catch (e0) {}
+  var dot = n.lastIndexOf(".");
+  return dot > 0 ? n.substring(0, dot) : n;
+}
+
+/**
+ * Busca en el nivel superior del grupo un "marco de página": path sin relleno ni trazo cuyo
+ * tamaño coincide con la página (en pt). El bridge puede emitirlo como primer elemento para
+ * que los límites del grupo sean exactamente la página (así el offset del contenido se conserva).
+ * Devuelve el PathItem o null.
+ */
+function cameoFindPageFrame(group, wPt, hPt, tol) {
+  try {
+    for (var i = 0; i < group.pathItems.length; i++) {
+      var p = group.pathItems[i];
+      if (p.filled || p.stroked) continue;
+      var gb = p.geometricBounds; // [left, top, right, bottom]
+      var w = gb[2] - gb[0], h = gb[1] - gb[3];
+      if (Math.abs(w - wPt) <= tol && Math.abs(h - hPt) <= tol) return p;
+    }
+  } catch (e) {}
+  return null;
+}
+
+/** Fuentes usadas por un TextFrame que no están instaladas (Illustrator las sustituye). */
+function cameoMissingFonts(tf, out) {
+  var name = null;
+  try { name = tf.textRange.characterAttributes.textFont.name; } catch (e1) { name = null; }
+  if (!name) return;
+  var ok = true;
+  try { app.textFonts.getByName(name); } catch (e2) { ok = false; }
+  if (!ok && cameoIndexOf(out, name) < 0) out.push(name);
+}
+
+/**
+ * Contornea todos los textFrames de un contenedor (recursivo en grupos).
+ * Devuelve el número de textos contorneados; los fallos van a warnings.
+ */
+function cameoOutlineTextFrames(container, warnings, missing) {
+  var count = 0;
+  var i;
+  // Primero los hijos: createOutline() reemplaza el TextFrame por un GroupItem en el padre,
+  // así que se toma una foto de los grupos hijos antes de tocar nada.
+  var children = [];
+  try { for (i = 0; i < container.groupItems.length; i++) children.push(container.groupItems[i]); } catch (e0) {}
+  for (i = 0; i < children.length; i++) count += cameoOutlineTextFrames(children[i], warnings, missing);
+
+  // Luego los textFrames de este nivel, de atrás hacia adelante (la colección es viva).
+  var tfs = container.textFrames;
+  if (!tfs) return count;
+  for (i = tfs.length - 1; i >= 0; i--) {
+    var tf = tfs[i];
+    cameoMissingFonts(tf, missing);
+    var preview = "";
+    try { preview = String(tf.contents).substring(0, 20); } catch (e1) {}
+    try {
+      tf.createOutline();
+      count++;
+    } catch (e2) {
+      warnings.push("No se pudo contornear el texto \"" + preview + "\": " + e2);
+    }
+  }
+  return count;
+}
+
+function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm) {
+  var doc = null;
+  var created = false;
+  var tmpDoc = null;
+  var group = null;
+  try {
+    var svgFile = new File(svgPath);
+    if (!svgFile.exists) return cameoError("No existe el SVG: " + svgPath);
+    var warnings = [];
+    newDoc = (newDoc === true || newDoc === "true");
+    outlineText = (outlineText === true || outlineText === "true");
+    pageWmm = parseFloat(pageWmm);
+    pageHmm = parseFloat(pageHmm);
+    var hasPage = !isNaN(pageWmm) && pageWmm > 0 && !isNaN(pageHmm) && pageHmm > 0;
+
+    // --- Documento destino ---
+    if (newDoc) {
+      if (!hasPage) return cameoError("Tamaño de página inválido para el documento nuevo (" + pageWmm + " × " + pageHmm + " mm)");
+      var preset = new DocumentPreset();
+      preset.width = cameoMmToPt(pageWmm);
+      preset.height = cameoMmToPt(pageHmm);
+      preset.colorMode = DocumentColorSpace.RGB;
+      preset.units = RulerUnits.Millimeters;
+      preset.title = cameoBaseName(svgFile);
+      doc = app.documents.addDocument(DocumentColorSpace.RGB, preset);
+      created = true;
+    } else {
+      if (app.documents.length === 0) return cameoError("No hay documento abierto: abre uno o marca \"Nuevo documento\"");
+      doc = app.activeDocument;
+    }
+    app.activeDocument = doc;
+    var ab = cameoActiveArtboardRect(doc);
+
+    // --- Colocar el SVG ---
+    var placeErr = null;
+    try {
+      group = doc.groupItems.createFromFile(svgFile);
+    } catch (e1) {
+      group = null;
+      placeErr = e1;
+    }
+    if (!group) {
+      // Alternativa: abrir el SVG como documento y duplicar sus ítems de nivel superior
+      warnings.push("createFromFile falló (" + placeErr + "); se usó app.open()");
+      tmpDoc = app.open(svgFile);
+      var target = doc.groupItems.add();
+      for (var L = 0; L < tmpDoc.layers.length; L++) {
+        var ly = tmpDoc.layers[L];
+        for (var k = 0; k < ly.pageItems.length; k++) {
+          ly.pageItems[k].duplicate(target, ElementPlacement.PLACEATEND);
+        }
+      }
+      tmpDoc.close(SaveOptions.DONOTSAVECHANGES);
+      tmpDoc = null;
+      app.activeDocument = doc;
+      group = target;
+      if (group.pageItems.length === 0) {
+        group.remove();
+        throw new Error("El SVG no contiene ítems importables");
+      }
+    }
+    group.name = cameoBaseName(svgFile);
+
+    // --- Escala: si el SVG llegó sin width/height en mm, Illustrator lee el viewBox como px (=pt)
+    // y todo queda 2,83× más chico. Se detecta con el marco de página (si el bridge lo emite).
+    var wPt = hasPage ? cameoMmToPt(pageWmm) : 0;
+    var hPt = hasPage ? cameoMmToPt(pageHmm) : 0;
+    var frame = null;
+    if (hasPage) {
+      frame = cameoFindPageFrame(group, wPt, hPt, 1.0);
+      if (!frame) {
+        var small = cameoFindPageFrame(group, pageWmm, pageHmm, 0.5);
+        if (small) {
+          var pct = CAMEO_PT_PER_MM * 100;
+          group.resize(pct, pct, true, true, true, true, pct, Transformation.TOPLEFT);
+          warnings.push("El SVG venía sin unidades en mm: se reescaló ×" + cameoRound(CAMEO_PT_PER_MM, 3));
+          frame = cameoFindPageFrame(group, wPt, hPt, 1.0);
+        }
+      }
+    }
+
+    // --- Posicionar: esquina superior izquierda del grupo = esquina superior izquierda del artboard ---
+    // Si hay marco de página se alinea por él (el contenido puede salirse de la página, como
+    // en Studio); si no, por los límites del grupo.
+    var gb = frame ? frame.geometricBounds : group.geometricBounds; // [left, top, right, bottom], Y hacia arriba
+    group.translate(ab.left - gb[0], ab.top - gb[1]);
+
+    // El marco de página ya cumplió su función: fuera
+    if (frame) { try { frame.remove(); } catch (e3) {} }
+
+    // --- Texto a contornos ---
+    var outlined = 0;
+    if (outlineText) {
+      var missing = [];
+      outlined = cameoOutlineTextFrames(group, warnings, missing);
+      if (missing.length) warnings.push("Fuentes no instaladas (Illustrator sustituyó): " + missing.join(", "));
+    }
+
+    var items = 0;
+    try { items = group.pageItems.length; } catch (e4) { items = 0; }
+    if (hasPage && !newDoc && (Math.abs(ab.w - wPt) > 1 || Math.abs(ab.h - hPt) > 1)) {
+      warnings.push("La página del .studio3 (" + cameoRound(pageWmm, 1) + " × " + cameoRound(pageHmm, 1) +
+        " mm) no coincide con el artboard (" + cameoPtToMm(ab.w) + " × " + cameoPtToMm(ab.h) + " mm)");
+    }
+
+    // Dejar el grupo seleccionado: el modo "Selección" del panel lo toma directo
+    try { doc.selection = null; group.selected = true; } catch (e5) {}
+
+    return cameoJson({ ok: true, items: items, outlined: outlined, warnings: warnings, newDoc: created });
+  } catch (e) {
+    try { if (tmpDoc) tmpDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (e8) {}
+    // Un documento nuevo que quedó vacío solo estorba; si ya se colocó algo, se conserva
+    try { if (created && doc && !group) doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e9) {}
+    return cameoError("cameoImportSvg: " + e);
   }
 }

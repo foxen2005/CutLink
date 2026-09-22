@@ -101,6 +101,11 @@
     selImages: $('sel-images'),
     inImageMargin: $('in-image-margin'),
 
+    btnImportStudio: $('btn-import-studio'),
+    chkImportNewDoc: $('chk-import-newdoc'),
+    chkImportOutline: $('chk-import-outline'),
+    importInfo: $('import-info'),
+
     selMaterial: $('sel-material'),
     inPressure: $('in-pressure'),
     inSpeed: $('in-speed'),
@@ -1085,6 +1090,70 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Importar .studio3 (Silhouette Studio) → bridge convierte a SVG → Illustrator lo coloca
+  // ---------------------------------------------------------------------------
+  // CEP: window.cep.fs.showOpenDialogEx(allowMultiple, chooseDirectory, title, initialPath, fileTypes)
+  // devuelve {err, data:[rutas]} de forma síncrona (no hay <input type=file> utilizable).
+  function pickStudioFile() {
+    if (!window.cep || !window.cep.fs || typeof window.cep.fs.showOpenDialogEx !== 'function') {
+      throw new Error('Diálogo de archivo no disponible (window.cep.fs)');
+    }
+    var res = window.cep.fs.showOpenDialogEx(false, false, 'Importar archivo Silhouette Studio', '', ['studio3', 'studio']);
+    if (!res || (res.err && res.err !== 0)) throw new Error('No se pudo abrir el diálogo de archivo (err ' + (res && res.err) + ')');
+    var paths = res.data || [];
+    // Cancelar devuelve data vacío: no es un error
+    if (!paths.length || !paths[0]) return null;
+    return paths[0];
+  }
+
+  function doImportStudio() {
+    var studioPath;
+    try { studioPath = pickStudioFile(); }
+    catch (e) { logErr(e.message); return; }
+    if (!studioPath) return;
+    if (!bridgeOnline) { logErr('Bridge no responde'); return; }
+
+    var newDoc = !!el.chkImportNewDoc.checked;
+    var outline = !!el.chkImportOutline.checked;
+    var fileName = studioPath.replace(/^.*[\\\/]/, '');
+    el.btnImportStudio.disabled = true;
+    el.importInfo.textContent = 'Convirtiendo ' + fileName + '…';
+    log('Importando ' + fileName + '…');
+
+    // La conversión puede tardar con imágenes grandes: 120 s de margen
+    bridgePost('/studio3/convert', { path: studioPath }, 120000).then(function (r) {
+      if (!r || !r.ok) throw new Error((r && r.error) || 'El bridge no pudo convertir el archivo');
+      var page = r.page_mm || [0, 0];
+      var pageW = parseFloat(page[0]) || 0, pageH = parseFloat(page[1]) || 0;
+      (r.warnings || []).forEach(function (w) { logErr('Conversión: ' + w); });
+      el.importInfo.textContent = 'Colocando en Illustrator…';
+      // Ruta a ExtendScript con barras normales (File() las acepta en Windows)
+      var svgPath = String(r.svg_path).replace(/\\/g, '/');
+      var script = 'cameoImportSvg(' + jsxStr(svgPath) + ',' + (newDoc ? 'true' : 'false') + ',' +
+        (outline ? 'true' : 'false') + ',' + pageW + ',' + pageH + ')';
+      return evalScript(script).then(function (ai) {
+        if (!ai.ok) throw new Error(ai.error || 'Illustrator no pudo colocar el SVG');
+        var st = r.stats || {};
+        var parts = [
+          (st.shapes || 0) + ' formas',
+          (st.texts || 0) + ' textos' + (outline ? ' (' + (ai.outlined || 0) + ' contorneados)' : ''),
+          (st.images || 0) + ' imágenes',
+          pageW.toFixed(1) + ' × ' + pageH.toFixed(1) + ' mm'
+        ];
+        el.importInfo.textContent = fileName + ': ' + parts.join(' · ');
+        (ai.warnings || []).forEach(function (w) { logErr('Illustrator: ' + w); });
+        logOk('Importado ' + fileName + ' (' + (ai.items || 0) + ' ítems)');
+        return refreshDoc();
+      });
+    }).catch(function (e) {
+      el.importInfo.textContent = 'Error: ' + e.message;
+      logErr('Importar: ' + e.message);
+    }).then(function () {
+      el.btnImportStudio.disabled = false;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Eventos
   // ---------------------------------------------------------------------------
   function bindEvents() {
@@ -1118,6 +1187,10 @@
       if (el.chkColor.checked) refreshColors();
     });
     el.selColor.addEventListener('change', updateSwatch);
+
+    el.btnImportStudio.addEventListener('click', doImportStudio);
+    el.chkImportNewDoc.addEventListener('change', function () { try { localStorage.setItem('cameocut.import.newdoc', el.chkImportNewDoc.checked ? '1' : '0'); } catch (e) {} });
+    el.chkImportOutline.addEventListener('change', function () { try { localStorage.setItem('cameocut.import.outline', el.chkImportOutline.checked ? '1' : '0'); } catch (e) {} });
 
     el.selMaterial.addEventListener('change', applyMaterial);
     el.selBlade.addEventListener('change', onBladeChange);
@@ -1230,6 +1303,8 @@
     try {
       var im = localStorage.getItem('cameocut.images'); if (im) el.selImages.value = im;
       var mg = localStorage.getItem('cameocut.imagemargin'); if (mg !== null) el.inImageMargin.value = mg;
+      var ind = localStorage.getItem('cameocut.import.newdoc'); if (ind !== null) el.chkImportNewDoc.checked = ind === '1';
+      var iol = localStorage.getItem('cameocut.import.outline'); if (iol !== null) el.chkImportOutline.checked = iol === '1';
     } catch (e) {}
     log('Cameo Cut listo. Node ' + (hasNode ? 'OK' : 'no disponible') + '.');
     refreshDoc();
