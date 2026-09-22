@@ -142,7 +142,6 @@
     inSearchX: $('in-searchx'),
     inSearchY: $('in-searchy'),
     btnRegmarkTest: $('btn-regmark-test'),
-    btnRegmarkSweep: $('btn-regmark-sweep'),
     inCalY: $('in-caly'),
     btnAddRegmarks: $('btn-add-regmarks'),
     btnRemoveRegmarks: $('btn-remove-regmarks'),
@@ -823,7 +822,6 @@
   function regmarkTest(sweep) {
     if (!bridgeOnline) { logErr('Bridge no responde'); return; }
     if (!docInfo) { logErr('No hay documento'); return; }
-    if (sweep && !window.confirm('El barrido prueba hasta 25 puntos de arranque; cada fallo tarda ~20 s (hasta 5 min). ¿Continuar?')) return;
     var pnc = printAndCutPayload({ w_mm: docInfo.artboard.w_mm, h_mm: docInfo.artboard.h_mm });
     pnc.enabled = true;
     bridgePost('/regmark-test', { print_and_cut: pnc, material_id: el.selMaterial.value, overrides: buildOverrides(), sweep: !!sweep }, 10000)
@@ -1115,7 +1113,6 @@
     });
     el.btnAddRegmarks.addEventListener('click', addRegmarks);
     el.btnRegmarkTest.addEventListener('click', function () { regmarkTest(false); });
-    el.btnRegmarkSweep.addEventListener('click', function () { regmarkTest(true); });
     el.inSearchX.addEventListener('change', saveSearchOffset);
     el.inSearchY.addEventListener('change', saveSearchOffset);
     document.querySelectorAll('input[name="pnc-mode"]').forEach(function (r) {
