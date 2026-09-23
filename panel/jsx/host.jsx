@@ -7,11 +7,12 @@
  *
  * Funciones públicas (llamadas desde main.js con csInterface.evalScript):
  *   cameoGetDocInfo()
- *   cameoExportCutSVG(mode, layerName, outPath)
- *   cameoAddRegmarks(insetMm)
+ *   cameoExportCutSVG(mode, layerName, outPath, artboardIndex)
+ *   cameoAddRegmarks(insetMm, thickMm, insetBottomMm)
  *   cameoRemoveRegmarks()
  *   cameoGetSelectionStrokeColors()
  *   cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm)
+ *   cameoPickStudioFile()
  */
 
 // ---------------------------------------------------------------------------
@@ -195,10 +196,23 @@ function cameoGetDocInfo() {
       regmarks = { inset_mm: inset, thick_mm: thick, inset_bottom_mm: insetBottom };
     }
 
+    // Mesas de trabajo: nombre y tamaño de cada una, para elegir cuál se corta
+    var artboards = [];
+    for (var n = 0; n < doc.artboards.length; n++) {
+      var r = doc.artboards[n].artboardRect;
+      artboards.push({
+        name: doc.artboards[n].name,
+        w_mm: cameoPtToMm(r[2] - r[0]),
+        h_mm: cameoPtToMm(r[1] - r[3])
+      });
+    }
+
     return cameoJson({
       ok: true,
       name: doc.name,
       artboard: { w_mm: cameoPtToMm(ab.w), h_mm: cameoPtToMm(ab.h) },
+      artboards: artboards,
+      activeArtboard: doc.artboards.getActiveArtboardIndex(),
       layers: layers,
       hasSelection: !!hasSel,
       hasRegmarks: !!regLayer,
@@ -280,14 +294,38 @@ function cameoReleaseClippingMasks(doc) {
   doc.selection = null;
 }
 
-function cameoExportCutSVG(mode, layerName, outPath) {
+/** ¿El ítem toca la mesa de trabajo? (geometricBounds: [left, top, right, bottom], Y hacia arriba) */
+function cameoItemInArtboard(item, ab) {
+  try {
+    var b = item.geometricBounds;
+    return !(b[2] < ab.left || b[0] > ab.right || b[3] > ab.top || b[1] < ab.bottom);
+  } catch (e) {
+    return true;   // si no se puede medir, no lo descartamos
+  }
+}
+
+function cameoExportCutSVG(mode, layerName, outPath, artboardIndex) {
   var tmpDoc = null;
   try {
     if (app.documents.length === 0) return cameoError("No hay documento abierto");
     var srcDoc = app.activeDocument;
+    // Mesa de trabajo elegida en el panel (por defecto, la activa)
+    artboardIndex = parseInt(artboardIndex, 10);
+    if (!isNaN(artboardIndex) && artboardIndex >= 0 && artboardIndex < srcDoc.artboards.length) {
+      srcDoc.artboards.setActiveArtboardIndex(artboardIndex);
+    }
     var ab = cameoActiveArtboardRect(srcDoc);
 
     var items = cameoCollectItems(srcDoc, mode, layerName);
+    // Capa / documento completo: solo lo que está sobre esa mesa de trabajo
+    if (mode !== "selection") {
+      var onBoard = [];
+      for (var f = 0; f < items.length; f++) {
+        if (cameoItemInArtboard(items[f], ab)) onBoard.push(items[f]);
+      }
+      if (onBoard.length === 0) throw new Error("No hay ítems sobre la mesa de trabajo elegida");
+      items = onBoard;
+    }
     var count = items.length;
 
     // --- Documento temporal del mismo tamaño que el artboard activo ---
@@ -685,5 +723,18 @@ function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm) {
     // Un documento nuevo que quedó vacío solo estorba; si ya se colocó algo, se conserva
     try { if (created && doc && !group) doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e9) {}
     return cameoError("cameoImportSvg: " + e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7. cameoPickStudioFile — respaldo del diálogo de archivo cuando window.cep.fs no está
+// ---------------------------------------------------------------------------
+function cameoPickStudioFile() {
+  try {
+    var f = File.openDialog("Elige un archivo de Silhouette Studio", "*.studio3;*.studio", false);
+    if (!f) return cameoJson({ ok: true, path: null });   // cancelado
+    return cameoJson({ ok: true, path: f.fsName });
+  } catch (e) {
+    return cameoError("cameoPickStudioFile: " + e);
   }
 }

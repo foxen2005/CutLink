@@ -95,6 +95,8 @@
     btnRefreshDoc: $('btn-refresh-doc'),
     docName: $('doc-name'),
     selLayer: $('sel-layer'),
+    selArtboard: $('sel-artboard'),
+    artboardField: $('artboard-field'),
     chkColor: $('chk-color'),
     selColor: $('sel-color'),
     colorSwatch: $('color-swatch'),
@@ -694,16 +696,47 @@
   // ---------------------------------------------------------------------------
   var docInfo = null;
 
+  // Mesas de trabajo: el selector solo aparece si hay más de una
+  function renderArtboards(info) {
+    var list = info.artboards || [];
+    el.artboardField.hidden = list.length < 2;
+    var prev = el.selArtboard.value;
+    el.selArtboard.innerHTML = '';
+    list.forEach(function (a, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = (i + 1) + '. ' + a.name + ' (' + a.w_mm.toFixed(0) + '×' + a.h_mm.toFixed(0) + ' mm)';
+      el.selArtboard.appendChild(o);
+    });
+    var want = (prev !== '' && prev < list.length) ? prev : String(info.activeArtboard || 0);
+    el.selArtboard.value = want;
+  }
+
+  // Tamaño de la mesa elegida (no necesariamente la activa cuando se leyó el documento)
+  function pageSizeMm() {
+    if (!docInfo) return { w_mm: 0, h_mm: 0 };
+    var list = docInfo.artboards || [];
+    var a = list[currentArtboard()];
+    return a || docInfo.artboard;
+  }
+
+  function currentArtboard() {
+    var v = parseInt(el.selArtboard.value, 10);
+    return isNaN(v) ? 0 : v;
+  }
+
   function refreshDoc() {
     return evalScript('cameoGetDocInfo()').then(function (info) {
       if (!info.ok) {
         docInfo = null;
+        el.artboardField.hidden = true;
         el.docName.textContent = info.error || 'Sin documento';
         el.selLayer.innerHTML = '';
         el.regmarksInfo.textContent = 'Sin documento.';
         return null;
       }
       docInfo = info;
+      renderArtboards(info);
       el.docName.textContent = info.name + ' — ' + info.artboard.w_mm.toFixed(1) + ' × ' + info.artboard.h_mm.toFixed(1) + ' mm' + (info.hasSelection ? ' — hay selección' : '');
       var prevLayer = el.selLayer.value;
       el.selLayer.innerHTML = '';
@@ -804,7 +837,7 @@
     var layer = mode === 'layer' ? el.selLayer.value : '';
     if (mode === 'layer' && !layer) return Promise.reject(new Error('Elige una capa'));
     var outPath = tmpSvgPath().replace(/\\/g, '/');
-    var script = 'cameoExportCutSVG(' + jsxStr(mode) + ',' + jsxStr(layer) + ',' + jsxStr(outPath) + ')';
+    var script = 'cameoExportCutSVG(' + jsxStr(mode) + ',' + jsxStr(layer) + ',' + jsxStr(outPath) + ',' + currentArtboard() + ')';
     return evalScript(script).then(function (r) {
       if (!r.ok) throw new Error(r.error || 'Error exportando SVG');
       log('SVG exportado (' + r.items + ' ítems, ' + r.w_mm.toFixed(1) + '×' + r.h_mm.toFixed(1) + ' mm)');
@@ -827,8 +860,8 @@
       inset_mm: parseFloat(el.inInset.value) || 10,
       thick_mm: parseFloat(el.inThick.value) || 0.5,
       inset_bottom_mm: parseFloat(el.inInsetBottom.value) || null,
-      page_w_mm: (docInfo && docInfo.artboard.w_mm) || exp.w_mm,
-      page_h_mm: (docInfo && docInfo.artboard.h_mm) || exp.h_mm,
+      page_w_mm: pageSizeMm().w_mm || exp.w_mm,
+      page_h_mm: pageSizeMm().h_mm || exp.h_mm,
       calib_x_mm: parseFloat(el.inCalX.value) || 0,
       calib_y_mm: parseFloat(el.inCalY.value) || 0,
       search_x_mm: parseFloat(el.inSearchX.value) || 0,
@@ -844,7 +877,7 @@
   function regmarkTest(sweep) {
     if (!bridgeOnline) { logErr('Bridge no responde'); return; }
     if (!docInfo) { logErr('No hay documento'); return; }
-    var pnc = printAndCutPayload({ w_mm: docInfo.artboard.w_mm, h_mm: docInfo.artboard.h_mm });
+    var pnc = printAndCutPayload({ w_mm: pageSizeMm().w_mm, h_mm: pageSizeMm().h_mm });
     pnc.enabled = true;
     bridgePost('/regmark-test', { print_and_cut: pnc, material_id: el.selMaterial.value, overrides: buildOverrides(), sweep: !!sweep }, 10000)
       .then(function (r) {
@@ -981,7 +1014,8 @@
     var ov = buildOverrides();
     var mode = currentMode();
     var modeTxt = { selection: 'Selección', layer: 'Capa "' + el.selLayer.value + '"', all: 'Todo el documento' }[mode];
-    var docTxt = docInfo ? (docInfo.name + ' · ' + docInfo.artboard.w_mm.toFixed(0) + ' × ' + docInfo.artboard.h_mm.toFixed(0) + ' mm') : '';
+    var docTxt = docInfo ? (docInfo.name + ' · ' + pageSizeMm().w_mm.toFixed(0) + ' × ' + pageSizeMm().h_mm.toFixed(0) + ' mm' +
+      ((docInfo.artboards || []).length > 1 ? ' · mesa ' + (currentArtboard() + 1) : '')) : '';
 
     var rows = [
       ['Qué', modeTxt + (docTxt ? ' — ' + docTxt : ''), true],
@@ -1094,23 +1128,35 @@
   // ---------------------------------------------------------------------------
   // CEP: window.cep.fs.showOpenDialogEx(allowMultiple, chooseDirectory, title, initialPath, fileTypes)
   // devuelve {err, data:[rutas]} de forma síncrona (no hay <input type=file> utilizable).
+  // Devuelve una promesa con la ruta elegida, o null si se cancela. Si el diálogo de CEP no
+  // está disponible, se pide a Illustrator (File.openDialog de ExtendScript).
   function pickStudioFile() {
-    if (!window.cep || !window.cep.fs || typeof window.cep.fs.showOpenDialogEx !== 'function') {
-      throw new Error('Diálogo de archivo no disponible (window.cep.fs)');
+    if (window.cep && window.cep.fs && typeof window.cep.fs.showOpenDialogEx === 'function') {
+      var res = window.cep.fs.showOpenDialogEx(false, false, 'Importar archivo Silhouette Studio', '', ['studio3', 'studio']);
+      if (!res || (res.err && res.err !== 0)) {
+        return Promise.reject(new Error('El diálogo de archivo falló (err ' + (res && res.err) + ')'));
+      }
+      var paths = res.data || [];
+      return Promise.resolve(paths.length && paths[0] ? paths[0] : null);
     }
-    var res = window.cep.fs.showOpenDialogEx(false, false, 'Importar archivo Silhouette Studio', '', ['studio3', 'studio']);
-    if (!res || (res.err && res.err !== 0)) throw new Error('No se pudo abrir el diálogo de archivo (err ' + (res && res.err) + ')');
-    var paths = res.data || [];
-    // Cancelar devuelve data vacío: no es un error
-    if (!paths.length || !paths[0]) return null;
-    return paths[0];
+    log('Diálogo de CEP no disponible: se pide a Illustrator');
+    return evalScript('cameoPickStudioFile()').then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'No se pudo abrir el diálogo');
+      return r.path || null;
+    });
   }
 
   function doImportStudio() {
-    var studioPath;
-    try { studioPath = pickStudioFile(); }
-    catch (e) { logErr(e.message); return; }
-    if (!studioPath) return;
+    log('Elige el archivo .studio3…');
+    pickStudioFile().then(function (studioPath) {
+      if (!studioPath) { log('Importación cancelada'); return; }
+      importStudioPath(studioPath);
+    }).catch(function (e) {
+      logErr('Importar: ' + e.message);
+    });
+  }
+
+  function importStudioPath(studioPath) {
     if (!bridgeOnline) { logErr('Bridge no responde'); return; }
 
     var newDoc = !!el.chkImportNewDoc.checked;
@@ -1178,6 +1224,8 @@
         if (r.value === 'layer') el.selLayer.focus();
       });
     });
+    // Cambiar de mesa de trabajo invalida la vista previa anterior
+    el.selArtboard.addEventListener('change', function () { lastDryRun = null; clearPreview(); });
     el.selLayer.addEventListener('focus', function () {
       var r = document.querySelector('input[name="mode"][value="layer"]');
       if (r) r.checked = true;

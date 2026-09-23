@@ -45,6 +45,11 @@
         <button id="btn-refresh-doc" class="btn small">Actualizar</button>
       </summary>
       <div class="doc-name" id="doc-name">Sin documento</div>
+      <!-- Documentos con varias mesas de trabajo: cuál se corta (capa / todo se filtran por ella) -->
+      <div class="field" id="artboard-field" hidden>
+        <label for="sel-artboard">Mesa de trabajo</label>
+        <select id="sel-artboard"></select>
+      </div>
       <div class="radio-group">
         <label class="radio"><input type="radio" name="mode" value="selection" checked> Selección</label>
         <label class="radio radio-inline">
