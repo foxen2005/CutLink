@@ -38,7 +38,11 @@ LIST_RE = rb"\x01([\x01-\xff])\x00\x00\x00"           # cabecera de lista de pun
 PNG_SIG = rb"\x89PNG\r\n\x1a\n"
 JPEG_SIG = rb"\xff\xd8\xff[\xdb\xe0\xe1\xe2\xee]"
 JPEG_EOI = b"\xff\xd9"
-IMAGE_NAME_RE = rb"([\w \-\.\(\)]+\.(?:png|jpe?g))_[0-9a-f]+"   # 'nombre.png_hash' antes de cada imagen
+# Referencia a una imagen: 'nombre.png_hash' (colocada desde archivo) o un UUID de 32 hex
+# (pegada desde el portapapeles, sin archivo de origen).
+IMAGE_TOKEN_RE = rb"[\w \-\.\(\)]{1,100}\.(?:png|jpe?g)_[0-9a-f]+|[0-9a-f]{32}"
+IMAGE_NAME_RE = rb"([\w \-\.\(\)]+\.(?:png|jpe?g))_[0-9a-f]+"
+IMAGE_REF = b"\x05"     # marca del campo que referencia la imagen en el registro del objeto
 # letra de un registro "Cut Union": cadena de 1 byte (prefijo de longitud 1) seguida de su UUID
 LETTER_RE = rb"\x01\x00\x00\x00(.)[\x00-\x20]{0,8}\x20\x00\x00\x00[0-9a-f]{32}"
 PAGE_BY_NAME = {           # formatos que Studio guarda por nombre (`constant:<id>`)
@@ -304,25 +308,36 @@ def _image_pool(data: bytes) -> dict[str, tuple[bytes, str, str]]:
         if end < 0:
             continue
         head = data[max(0, off - 600):off]
-        m = list(re.finditer(IMAGE_NAME_RE, head))
-        if m:
-            key = m[-1].group(0).decode("latin-1")
-            name = m[-1].group(1).decode("latin-1")
+        tokens = list(re.finditer(IMAGE_TOKEN_RE, head))
+        if tokens:
+            nm = re.match(IMAGE_NAME_RE, tokens[-1].group(0))
+            key = tokens[-1].group(0).decode("latin-1")
+            # sin nombre de archivo (imagen pegada): el UUID hace de nombre
+            name = nm.group(1).decode("latin-1") if nm else f"imagen_{key[:8]}.{kind}"
         else:
             key = name = f"image_{off:x}.{kind}"
         pool.setdefault(key, (data[off:end], kind, name))
     return pool
 
 
-def _parse_images(data: bytes, pool: dict, warnings: list[str]) -> list[ImageObj]:
-    """Objetos imagen: nombre + cuadrado unitario + matriz 3x3 + caja de corte (01 03)."""
+def _parse_images(data: bytes, pool: dict, shapes: list[PathShape], warnings: list[str]) -> list[ImageObj]:
+    """Imágenes de dos formas:
+    a) objeto imagen: token + cuadrado unitario + matriz 3x3 + caja de corte (`01 03`);
+    b) relleno de una forma (Fill > imagen en Studio): token seguido del trazado que rellena;
+       la imagen se coloca cubriendo la caja de ese trazado."""
     images = []
     seen = set()
-    for m in re.finditer(IMAGE_NAME_RE, data):
-        o = m.start()
+    filled = set()          # formas que ya recibieron su imagen de relleno
+    # Registros de objeto: `05` + longitud (uint32) + token que referencia la imagen
+    for m in re.finditer(re.escape(IMAGE_REF) + rb"([\x01-\x7f])\x00\x00\x00", data):
+        n = m.group(1)[0]
+        o = m.end()
+        raw = data[o:o + n]
+        if not re.fullmatch(IMAGE_TOKEN_RE, raw):
+            continue
         if o in seen:
             continue
-        token = m.group(0).decode("latin-1")
+        token = raw.decode("latin-1")
         # el token del registro del objeto y el del pool comparten prefijo pero el hash puede
         # llevar un carácter de más/menos según el byte siguiente: emparejamos por prefijo
         hit = next(((b, k, n) for key, (b, k, n) in pool.items()
@@ -331,24 +346,39 @@ def _parse_images(data: bytes, pool: dict, warnings: list[str]) -> list[ImageObj
             continue
         blob, kind, name = hit
         seg_end = min(len(data), o + 4000)
+        corners: list[tuple[float, float]] = []
+        mat = None
+        # a) imagen colocada como objeto: cuadrado unitario + matriz 3x3
         k = data.find(LINE, o, seg_end)
-        if k < 0:
-            continue
-        x, y = struct.unpack_from("<ff", data, k + 5)
-        if not (abs(abs(x) - 1.0) < 1e-6 and abs(abs(y) - 1.0) < 1e-6):
-            continue          # no es el registro de objeto (p. ej. el propio pool de bytes)
-        mk = data.find(MATRIX_MARK, k, seg_end)
-        if mk < 0 or mk - k > 0x400:
-            warnings.append(f"Imagen {name}: sin matriz de posición, se omite")
-            continue
-        tx, ty, a, b, c, d = struct.unpack_from("<6f", data, mk - 24)
-        if not all(_ok(v, 5000) for v in (tx, ty, a, b, c, d)):
-            continue
-        q = data.find(QUAD_MARK, mk, seg_end)
-        corners = _quad_at(data, q + 5) if q >= 0 else []
+        if k >= 0:
+            x, y = struct.unpack_from("<ff", data, k + 5)
+            if abs(abs(x) - 1.0) < 1e-6 and abs(abs(y) - 1.0) < 1e-6:
+                mk = data.find(MATRIX_MARK, k, seg_end)
+                if mk >= 0 and mk - k <= 0x400:
+                    tx, ty, a, b, c, d = struct.unpack_from("<6f", data, mk - 24)
+                    if all(_ok(v, 5000) for v in (tx, ty, a, b, c, d)):
+                        mat = (a, b, c, d, tx, ty)
+                        q = data.find(QUAD_MARK, mk, seg_end)
+                        corners = _quad_at(data, q + 5) if q >= 0 else []
+        # b) imagen como relleno de una forma: la imagen cubre la caja del trazado siguiente
+        if mat is None:
+            shape = next((s for s in shapes if o < s.offset < o + 3000), None)
+            if shape is None:
+                warnings.append(f"Imagen {name}: sin posición reconocible, se omite")
+                continue
+            if shape.offset in filled:
+                continue          # varias referencias a la misma forma: una sola imagen
+            filled.add(shape.offset)
+            xs = [p["x"] for p in shape.points]; ys = [p["y"] for p in shape.points]
+            w2, h2 = (max(xs) - min(xs)) / 2, (max(ys) - min(ys)) / 2
+            cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+            if w2 <= 0 or h2 <= 0:
+                continue
+            mat = (w2, 0.0, 0.0, h2, cx, cy)
+            corners = [(cx - w2, cy - h2), (cx + w2, cy - h2), (cx + w2, cy + h2), (cx - w2, cy + h2)]
         seen.add(o)
         images.append(ImageObj(name=name, corners=corners, data=blob, kind=kind, offset=o,
-                               matrix=(a, b, c, d, tx, ty)))
+                               matrix=mat))
     images.sort(key=lambda im: im.offset)
     return images
 
@@ -367,7 +397,7 @@ def parse(path: str) -> Studio3Doc:
     pool = _image_pool(data)
     # la miniatura es la primera PNG pequeña sin nombre de archivo
     pool = {k: v for k, v in pool.items() if not k.startswith("image_") or len(v[0]) > 400_000}
-    images = _parse_images(data, pool, warnings)
+    images = _parse_images(data, pool, shapes, warnings)
     return Studio3Doc(path=path, page_mm=page, shapes=shapes, texts=texts, images=images, warnings=warnings)
 
 
