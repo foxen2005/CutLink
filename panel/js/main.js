@@ -106,6 +106,7 @@
     btnImportStudio: $('btn-import-studio'),
     chkImportNewDoc: $('chk-import-newdoc'),
     chkImportOutline: $('chk-import-outline'),
+    chkImportEmbed: $('chk-import-embed'),
     importInfo: $('import-info'),
 
     selMaterial: $('sel-material'),
@@ -1161,6 +1162,7 @@
 
     var newDoc = !!el.chkImportNewDoc.checked;
     var outline = !!el.chkImportOutline.checked;
+    var embed = !!el.chkImportEmbed.checked;
     var fileName = studioPath.replace(/^.*[\\\/]/, '');
     el.btnImportStudio.disabled = true;
     el.importInfo.textContent = 'Convirtiendo ' + fileName + '…';
@@ -1175,15 +1177,21 @@
       el.importInfo.textContent = 'Colocando en Illustrator…';
       // Ruta a ExtendScript con barras normales (File() las acepta en Windows)
       var svgPath = String(r.svg_path).replace(/\\/g, '/');
+      // Las imágenes van aparte: ExtendScript no tiene JSON.parse, así que se pasan como
+      // líneas "ruta \t nombre \t a \t b \t c \t d \t tx \t ty"
+      var spec = (r.images || []).map(function (im) {
+        return [im.file, im.name].concat(im.matrix).join('\t');
+      }).join('\n');
       var script = 'cameoImportSvg(' + jsxStr(svgPath) + ',' + (newDoc ? 'true' : 'false') + ',' +
-        (outline ? 'true' : 'false') + ',' + pageW + ',' + pageH + ')';
+        (outline ? 'true' : 'false') + ',' + pageW + ',' + pageH + ',' + jsxStr(spec) + ',' +
+        (embed ? 'true' : 'false') + ')';
       return evalScript(script).then(function (ai) {
         if (!ai.ok) throw new Error(ai.error || 'Illustrator no pudo colocar el SVG');
         var st = r.stats || {};
         var parts = [
           (st.shapes || 0) + ' formas',
           (st.texts || 0) + ' textos' + (outline ? ' (' + (ai.outlined || 0) + ' contorneados)' : ''),
-          (st.images || 0) + ' imágenes',
+          (st.images || 0) + ' imágenes' + (st.images ? ' (' + (ai.placed || 0) + ' colocadas)' : ''),
           pageW.toFixed(1) + ' × ' + pageH.toFixed(1) + ' mm'
         ];
         el.importInfo.textContent = fileName + ': ' + parts.join(' · ');
@@ -1239,6 +1247,7 @@
     el.btnImportStudio.addEventListener('click', doImportStudio);
     el.chkImportNewDoc.addEventListener('change', function () { try { localStorage.setItem('cameocut.import.newdoc', el.chkImportNewDoc.checked ? '1' : '0'); } catch (e) {} });
     el.chkImportOutline.addEventListener('change', function () { try { localStorage.setItem('cameocut.import.outline', el.chkImportOutline.checked ? '1' : '0'); } catch (e) {} });
+    el.chkImportEmbed.addEventListener('change', function () { try { localStorage.setItem('cameocut.import.embed', el.chkImportEmbed.checked ? '1' : '0'); } catch (e) {} });
 
     el.selMaterial.addEventListener('change', applyMaterial);
     el.selBlade.addEventListener('change', onBladeChange);
@@ -1353,6 +1362,7 @@
       var mg = localStorage.getItem('cameocut.imagemargin'); if (mg !== null) el.inImageMargin.value = mg;
       var ind = localStorage.getItem('cameocut.import.newdoc'); if (ind !== null) el.chkImportNewDoc.checked = ind === '1';
       var iol = localStorage.getItem('cameocut.import.outline'); if (iol !== null) el.chkImportOutline.checked = iol === '1';
+      var iem = localStorage.getItem('cameocut.import.embed'); if (iem !== null) el.chkImportEmbed.checked = iem === '1';
     } catch (e) {}
     log('Cameo Cut listo. Node ' + (hasNode ? 'OK' : 'no disponible') + '.');
     refreshDoc();

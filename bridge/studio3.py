@@ -25,7 +25,6 @@ import re
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote
 
 MAGIC = b"silhouette05;"
 CURVE = b"\x01\x21\x00\x00\x00"
@@ -42,6 +41,11 @@ JPEG_EOI = b"\xff\xd9"
 IMAGE_NAME_RE = rb"([\w \-\.\(\)]+\.(?:png|jpe?g))_[0-9a-f]+"   # 'nombre.png_hash' antes de cada imagen
 # letra de un registro "Cut Union": cadena de 1 byte (prefijo de longitud 1) seguida de su UUID
 LETTER_RE = rb"\x01\x00\x00\x00(.)[\x00-\x20]{0,8}\x20\x00\x00\x00[0-9a-f]{32}"
+PAGE_BY_NAME = {           # formatos que Studio guarda por nombre (`constant:<id>`)
+    "a4": (210.0, 297.0), "a3": (297.0, 420.0), "letter": (215.9, 279.4),
+    "legal": (215.9, 355.6), "12x12": (304.8, 304.8), "12x24": (304.8, 609.6),
+    "8x12": (203.2, 304.8), "8_5x11": (215.9, 279.4),
+}
 KNOWN_PAGES = {(210.0, 297.0), (297.0, 420.0), (215.9, 279.4), (304.8, 304.8), (304.8, 609.6),
                (279.4, 431.8), (152.4, 152.4), (203.2, 254.0), (203.2, 304.8), (210.0, 297.0)}
 FONT_RE = rb"\x00\x00\x00([A-Z][A-Za-z0-9 \-]{2,40})\x00"   # nombre de fuente con prefijo de longitud
@@ -96,6 +100,13 @@ class Studio3Doc:
 # utilidades de escaneo
 # ---------------------------------------------------------------------------
 def _page_size(data: bytes) -> tuple[float, float]:
+    """Tamaño de página en mm. Studio guarda el formato por nombre (`constant:a4`); solo
+    cuando es un tamaño personalizado hay que buscar el par de floats."""
+    m = re.search(rb"constant:([a-z0-9_]+)", data)
+    if m:
+        named = PAGE_BY_NAME.get(m.group(1).decode("ascii"))
+        if named:
+            return named
     for k in range(0, min(len(data), 0x4000) - 8):
         w, h = struct.unpack_from("<ff", data, k)
         if (round(w, 1), round(h, 1)) in KNOWN_PAGES:
@@ -370,17 +381,9 @@ def to_svg(doc: Studio3Doc, out_dir: Path) -> str:
            f'width="{w}mm" height="{h}mm" viewBox="0 0 {w} {h}">',
            # marco de página: el importador lo usa para alinear y luego lo elimina
            f'<rect x="0" y="0" width="{w}" height="{h}" fill="none" stroke="none"/>']
-    for im in doc.images:
-        fname = re.sub(r"[^\w\.\-]", "_", im.name)
-        (out_dir / fname).write_bytes(im.data)
-        # ruta absoluta como URL: percent-encoding para espacios/#/% y escape XML para &
-        href = "file:///" + quote(str((out_dir / fname).resolve()).replace("\\", "/"), safe="/:")
-        href = href.replace("&", "&amp;")
-        a, b, c, d, tx, ty = im.matrix
-        # la imagen ocupa el cuadrado unitario [-1,1]²; la matriz lo lleva a la página (mm)
-        out.append(f'<image xlink:href="{href}" x="-1" y="-1" width="2" height="2" preserveAspectRatio="none" '
-                   f'transform="matrix({a:.5f} {b:.5f} {c:.5f} {d:.5f} {tx:.3f} {ty:.3f})"/>')
-        # (la caja de corte "pop-out" de la imagen ya sale como lista de puntos en doc.shapes)
+    # Las imágenes NO van en el SVG: el importador de Illustrator no resuelve los <image>
+    # enlazados con file:/// y los descarta en silencio. Se escriben como PNG/JPEG aparte y
+    # host.jsx las coloca nativamente con la matriz que devuelve convert().
     for s in doc.shapes:
         d = []
         p0 = s.points[0]
@@ -418,6 +421,24 @@ def to_svg(doc: Studio3Doc, out_dir: Path) -> str:
     return "\n".join(out)
 
 
+def content_bbox(doc: Studio3Doc) -> tuple[float, float, float, float]:
+    """Caja de todo el contenido en mm (trazados + imágenes). Puede salirse de la página:
+    en Studio el material sobrante se deja fuera de la hoja a propósito."""
+    xs: list[float] = []
+    ys: list[float] = []
+    for s in doc.shapes:
+        xs += [p["x"] for p in s.points]
+        ys += [p["y"] for p in s.points]
+    for im in doc.images:
+        a, b, c, d, tx, ty = im.matrix
+        for u, v in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            xs.append(a * u + c * v + tx)
+            ys.append(b * u + d * v + ty)
+    if not xs:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
 def convert(path: str, out_dir: str | None = None) -> dict:
     src = Path(path)
     doc = parse(str(src))
@@ -425,8 +446,25 @@ def convert(path: str, out_dir: str | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     svg_path = out / (src.stem + ".svg")
     svg_path.write_text(to_svg(doc, out), encoding="utf-8")
+
+    # Imágenes: archivo aparte + matriz; Illustrator las coloca nativamente (host.jsx)
+    images = []
+    for im in doc.images:
+        fname = re.sub(r"[^\w\.\-]", "_", im.name)
+        (out / fname).write_bytes(im.data)
+        images.append({"file": str((out / fname).resolve()), "name": im.name,
+                       "matrix": [round(v, 5) for v in im.matrix]})
+
+    bbox = content_bbox(doc)
+    w, h = doc.page_mm
+    if bbox[0] < -0.5 or bbox[1] < -0.5 or bbox[2] > w + 0.5 or bbox[3] > h + 0.5:
+        doc.warnings.append(
+            f"El contenido ({bbox[2] - bbox[0]:.0f} × {bbox[3] - bbox[1]:.0f} mm) se sale de la "
+            f"página de Studio ({w:.0f} × {h:.0f} mm)")
     return {"ok": True, "svg_path": str(svg_path), "out_dir": str(out), "page_mm": list(doc.page_mm),
+            "content_bbox_mm": [round(v, 3) for v in bbox],
             "stats": {"shapes": len(doc.shapes), "texts": len(doc.texts), "images": len(doc.images)},
+            "images": images,
             "texts": [{"text": t.text, "font": t.font, "size_pt": t.size_pt, "bbox": t.bbox} for t in doc.texts],
             "warnings": doc.warnings}
 

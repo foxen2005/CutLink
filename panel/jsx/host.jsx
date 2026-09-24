@@ -11,7 +11,7 @@
  *   cameoAddRegmarks(insetMm, thickMm, insetBottomMm)
  *   cameoRemoveRegmarks()
  *   cameoGetSelectionStrokeColors()
- *   cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm)
+ *   cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm, imagesSpec, embedImages)
  *   cameoPickStudioFile()
  */
 
@@ -608,7 +608,62 @@ function cameoOutlineTextFrames(container, warnings, missing) {
   return count;
 }
 
-function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm) {
+/**
+ * Coloca las imágenes del .studio3 con su matriz, simplemente debajo de su línea de corte
+ * (sin máscaras ni marcos). `spec` es una línea por imagen, con campos separados por
+ * tabulador: ruta \t nombre \t a \t b \t c \t d \t tx \t ty  (ExtendScript no tiene JSON.parse).
+ * La matriz lleva el cuadrado unitario [-1,1]² a mm de página (Y hacia abajo); Illustrator
+ * usa pt y Y hacia arriba.
+ */
+function cameoPlaceImages(doc, ab, spec, embed, warnings) {
+  var PT = CAMEO_PT_PER_MM;
+  var n = 0;
+  var lines = String(spec).split("\n");
+  for (var i = 0; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    var col = lines[i].split("\t");
+    if (col.length < 8) continue;
+    var info = { file: col[0], name: col[1],
+                 matrix: [parseFloat(col[2]), parseFloat(col[3]), parseFloat(col[4]),
+                          parseFloat(col[5]), parseFloat(col[6]), parseFloat(col[7])] };
+    try {
+      var f = new File(info.file);
+      if (!f.exists) { warnings.push("Imagen no encontrada: " + info.name); continue; }
+      var it = doc.placedItems.add();
+      it.file = f;
+      it.name = info.name;
+
+      // Cuadro actual del PNG colocado, en coordenadas del documento
+      var gb = it.geometricBounds;                 // [left, top, right, bottom]
+      var w0 = gb[2] - gb[0], h0 = gb[1] - gb[3];
+      if (w0 === 0 || h0 === 0) { warnings.push("Imagen vacía: " + info.name); continue; }
+      var cx0 = (gb[0] + gb[2]) / 2, cy0 = (gb[1] + gb[3]) / 2;
+
+      var a = info.matrix[0], b = info.matrix[1], c = info.matrix[2];
+      var d = info.matrix[3], tx = info.matrix[4], ty = info.matrix[5];
+
+      // Composición de: (píxeles → cuadrado unitario) · (matriz de Studio) · (mm → pt, Y invertida)
+      var m = app.getIdentityMatrix();
+      m.mValueA = PT * a * 2 / w0;
+      m.mValueC = -PT * c * 2 / h0;
+      m.mValueB = -PT * b * 2 / w0;
+      m.mValueD = PT * d * 2 / h0;
+      m.mValueTX = ab.left + PT * (tx - a * 2 * cx0 / w0 + c * 2 * cy0 / h0);
+      m.mValueTY = ab.top - PT * (ty - b * 2 * cx0 / w0 + d * 2 * cy0 / h0);
+      it.transform(m, true, true, true, true, 1, Transformation.DOCUMENTORIGIN);
+
+      if (embed) {
+        try { it.embed(); } catch (eEmb) { warnings.push("No se pudo incrustar " + info.name + ": " + eEmb); }
+      }
+      n++;
+    } catch (e) {
+      warnings.push("Imagen " + (info && info.name) + ": " + e);
+    }
+  }
+  return n;
+}
+
+function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm, imagesSpec, embedImages) {
   var doc = null;
   var created = false;
   var tmpDoc = null;
@@ -707,8 +762,15 @@ function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm) {
       if (missing.length) warnings.push("Fuentes no instaladas (Illustrator sustituyó): " + missing.join(", "));
     }
 
+    // --- Imágenes: se colocan nativamente (el importador de SVG descarta los <image> enlazados) ---
+    var placed = 0;
+    if (imagesSpec) {
+      embedImages = (embedImages === true || embedImages === "true");
+      placed = cameoPlaceImages(doc, ab, imagesSpec, embedImages, warnings);
+    }
+
     var items = 0;
-    try { items = group.pageItems.length; } catch (e4) { items = 0; }
+    try { items = group.pageItems.length + placed; } catch (e4) { items = placed; }
     if (hasPage && !newDoc && (Math.abs(ab.w - wPt) > 1 || Math.abs(ab.h - hPt) > 1)) {
       warnings.push("La página del .studio3 (" + cameoRound(pageWmm, 1) + " × " + cameoRound(pageHmm, 1) +
         " mm) no coincide con el artboard (" + cameoPtToMm(ab.w) + " × " + cameoPtToMm(ab.h) + " mm)");
@@ -717,7 +779,8 @@ function cameoImportSvg(svgPath, newDoc, outlineText, pageWmm, pageHmm) {
     // Dejar el grupo seleccionado: el modo "Selección" del panel lo toma directo
     try { doc.selection = null; group.selected = true; } catch (e5) {}
 
-    return cameoJson({ ok: true, items: items, outlined: outlined, warnings: warnings, newDoc: created });
+    return cameoJson({ ok: true, items: items, outlined: outlined, placed: placed,
+                       warnings: warnings, newDoc: created });
   } catch (e) {
     try { if (tmpDoc) tmpDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (e8) {}
     // Un documento nuevo que quedó vacío solo estorba; si ya se colocó algo, se conserva
