@@ -51,7 +51,7 @@
   .ov { position: absolute; display: flex; gap: 8px; }
   .ov.tl { top: 12px; left: 12px; }
   .ov.bl { bottom: 12px; left: 12px; }
-  .ov.tc { top: 12px; left: 50%; transform: translateX(-50%); background: rgba(38,38,38,.95); border: 1px solid var(--line);
+  .ov.tc { top: 12px; right: 12px; background: rgba(38,38,38,.95); border: 1px solid var(--line);
     border-radius: 10px; padding: 6px; }
   .tbtn { height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(46,46,46,.95);
     cursor: pointer; font-weight: 600; white-space: nowrap; }
@@ -165,6 +165,7 @@
     <span class="brand">Cameo Link</span>
     <button class="btn sm" id="btnOpen">Abrir archivo</button>
     <span class="file-chip" id="fileChip">Ningún archivo abierto</span>
+    <button class="tbtn" id="bTools" aria-pressed="true" title="Mostrar u ocultar la barra de edición" hidden>✎ Herramientas</button>
     <span class="spacer"></span>
     <button class="pill" id="connPill" title="Estado de la máquina"><span class="dot" id="connDot"></span><span id="connText">CAMEO 4-812231B · lista</span></button>
   </div>
@@ -548,7 +549,7 @@ const tr = (dx, dy) => [1, 0, 0, 1, dx, dy];
 const sc = (sx, sy, cx, cy) => [sx, 0, 0, sy, cx - sx * cx, cy - sy * cy];
 const rot = (deg, cx, cy) => { const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); return [c, s, -s, c, cx - c * cx + s * cy, cy - s * cx - c * cy]; };
 const ID = [1, 0, 0, 1, 0, 0];
-const ed = { items: [], sel: new Set(), multi: false, lock: true, undo: [], redo: [], nid: 1, ng: 1 };
+const ed = { items: [], sel: new Set(), multi: false, lock: true, showBar: true, undo: [], redo: [], nid: 1, ng: 1 };
 
 function polyIn([x, y], poly) {
   let inside = false;
@@ -725,7 +726,7 @@ function selSummary() {
 }
 function updateSelUI() {
   const s = selSummary(), has = s.n > 0;
-  $("selBar").hidden = !has || !!st.cut;
+  $("selBar").hidden = !has || !!st.cut || !ed.showBar;
   $("selSec").hidden = !has;
   $("bGroup").disabled = s.n < 2; $("bUngroup").disabled = !s.groups;
   $("bUndo").disabled = !ed.undo.length; $("bRedo").disabled = !ed.redo.length;
@@ -749,6 +750,7 @@ $("bFlipH").onclick = () => action(() => { const [x0, , x1] = selBB(); applyT(sc
 $("bFlipV").onclick = () => action(() => { const [, y0, , y1] = selBB(); applyT(sc(1, -1, 0, (y0 + y1) / 2)); });
 $("bDel").onclick = () => action(() => { ed.items = ed.items.filter(i => !ed.sel.has(keyOf(i))); ed.sel.clear(); rebuild(); });
 $("bUndo").onclick = undo; $("bRedo").onclick = redo;
+$("bTools").onclick = () => { ed.showBar = !ed.showBar; $("bTools").setAttribute("aria-pressed", ed.showBar); updateSelUI(); };
 $("bMulti").onclick = () => { ed.multi = !ed.multi; $("bMulti").setAttribute("aria-pressed", ed.multi); toast(ed.multi ? "Selección múltiple: toca formas o arrastra un recuadro" : "Selección simple"); };
 $("lock").onclick = () => { ed.lock = !ed.lock; $("lock").setAttribute("aria-checked", ed.lock); };
 // campos numéricos: posición y tamaño exactos en mm
@@ -852,7 +854,7 @@ $("supportChip").onclick = () => askSupport(st.doc, true);
 // ---------------------------------------------------------------- documento + panel
 function showDoc(refit = true) {
   const d = st.doc, s = st.support, b = bboxOf(d.paths);
-  $("empty").hidden = true; ["ovTop", "ovZoom", "ovScale"].forEach(id => $(id).hidden = false);
+  $("empty").hidden = true; ["ovTop", "ovZoom", "ovScale", "bTools"].forEach(id => $(id).hidden = false);
   $("fileChip").innerHTML = `<b>${d.name}</b>`;
   $("supportText").textContent = `${s.name}${s.onMat ? " sobre mat" : ""} · ${nf(s.w)} × ${nf(s.h)} mm`;
   const out = d.paths.filter(p => outside(p, s.w, s.h)).length;
