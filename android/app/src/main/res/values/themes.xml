@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mismo criterio que el panel: neutro oscuro, cian Digital Fox para la acción principal -->
+    <color name="bg">#FF1E1E1E</color>
+    <color name="panel">#FF2A2A2A</color>
+    <color name="text">#FFE6E6E6</color>
+    <color name="muted">#FF9A9A9A</color>
+    <color name="accent">#FF00B8D9</color>
+    <color name="danger">#FFE0218A</color>
+
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:textColor">@color/text</item>
+    </style>
+
+    <style name="Section">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">20dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Arrow">
+        <item name="android:layout_width">88dp</item>
+        <item name="android:layout_height">72dp</item>
+        <item name="android:textSize">26sp</item>
+    </style>
+</resources>
