@@ -107,19 +107,41 @@ object Machine : LinkListener {
         ble = BleLink(app, d, this).also { it.connect() }
     }
 
-    fun connectSpp(d: BluetoothDevice) {
+    fun connectSpp(d: BluetoothDevice) = connectSppAny(listOf(d))
+
+    /**
+     * Prueba las direcciones en orden hasta que una conecte. La Cameo 4 aparece con DOS direcciones
+     * del mismo nombre (clásica y BLE) y solo la clásica abre el puerto serie: antes había que
+     * adivinar cuál tocar. Si el usuario desconecta o elige otra mientras tanto, se deja de probar.
+     */
+    fun connectSppAny(devs: List<BluetoothDevice>) {
+        if (devs.isEmpty()) return
         closeLinks()
-        setConn("Conectando por Bluetooth clásico a ${d.name ?: d.address}…")
-        val link = SppLink(d, adapter, this)
-        spp = link
+        setConn("Conectando a ${devs[0].name ?: devs[0].address}…")
+        val first = SppLink(devs[0], adapter, this)
+        spp = first
         worker.execute {
-            try {
-                link.connect()
-            } catch (e: Exception) {
-                if (spp === link) {
-                    spp = null
-                    onLinkLost(e.message ?: "falló la conexión")
+            var link = first
+            var lastErr: String? = null
+            for ((i, dev) in devs.withIndex()) {
+                if (i > 0) {
+                    if (spp !== link) return@execute          // se canceló o se eligió otra
+                    link = SppLink(dev, adapter, this)
+                    spp = link
+                    onLog("Probando la otra dirección de ${dev.name ?: "la Cameo"} (${dev.address})…")
                 }
+                try {
+                    link.connect()
+                    return@execute
+                } catch (e: Exception) {
+                    if (spp !== link) return@execute
+                    lastErr = e.message
+                    onLog("No conectó por ${dev.address}: ${e.message}")
+                }
+            }
+            if (spp === link) {
+                spp = null
+                onLinkLost(lastErr ?: "falló la conexión")
             }
         }
     }

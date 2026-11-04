@@ -187,9 +187,20 @@ class MainActivity : Activity(), Machine.Observer {
     // ------------------------------------------------------------------ búsqueda
     private data class Found(val device: BluetoothDevice, var name: String?, var rssi: Int?, val via: MutableSet<String>) {
         val looksLikeCameo get() = name?.contains(Regex("cameo|silhouette", RegexOption.IGNORE_CASE)) == true
+        /** La Cameo manda su nombre con bytes basura al final ("CAMEO 4-812231B��"): se limpian para
+         *  mostrarlo y para juntar sus dos direcciones. */
+        val cleanName get() = name?.replace(Regex("[^\\p{L}\\p{N} ._\\-]"), "")?.trim()
+        /** Orden para conectar por puerto serie: la que Android marca como clásica (BR/EDR) primero; la
+         *  BLE (C0:1B… en la Cameo 4) al final, porque esa no abre RFCOMM y cada intento tarda ~10 s. */
+        val sppRank get() = when (device.type) {
+            BluetoothDevice.DEVICE_TYPE_CLASSIC -> 0
+            BluetoothDevice.DEVICE_TYPE_DUAL -> 1
+            BluetoothDevice.DEVICE_TYPE_UNKNOWN -> 2
+            else -> 3
+        }
         // lista simple: solo el nombre (sin dirección ni señal); el detalle técnico queda en el registro
         override fun toString(): String =
-            (if (looksLikeCameo) "★ " else "") + (name ?: "(sin nombre)") + if ("Emparejado" in via) "   · emparejada" else ""
+            (if (looksLikeCameo) "★ " else "") + (cleanName ?: "(sin nombre)") + if ("Emparejado" in via) "   · emparejada" else ""
     }
 
     private val found = linkedMapOf<String, Found>()
@@ -223,9 +234,16 @@ class MainActivity : Activity(), Machine.Observer {
         f.via += via
         val a = listAdapter ?: return@post
         a.clear()
-        // solo equipos con nombre (los anónimos son ruido: relojes, TV, sensores); la Cameo primero
-        a.addAll(found.values.filter { it.name != null }.sortedWith(compareByDescending<Found> { it.looksLikeCameo }
-            .thenByDescending { "Emparejado" in it.via }.thenByDescending { it.rssi ?: -999 }))
+        // solo equipos con nombre (los anónimos son ruido: relojes, TV, sensores); la Cameo primero.
+        // La Cameo 4 tiene DOS direcciones con el mismo nombre (clásica 00:1B… y BLE C0:1B…): se muestra
+        // una sola, la clásica, que es por donde corta (la BLE no conecta por puerto serie).
+        // solo se juntan las Cameo (sus dos direcciones); otros equipos con el mismo nombre (dos
+        // parlantes iguales) siguen apareciendo por separado
+        a.addAll(found.values.filter { !it.cleanName.isNullOrEmpty() }
+            .groupBy { if (it.looksLikeCameo) "cameo:${it.cleanName}" else "addr:${it.device.address}" }.values
+            .map { same -> same.minBy { it.sppRank } }
+            .sortedWith(compareByDescending<Found> { it.looksLikeCameo }
+                .thenByDescending { "Emparejado" in it.via }.thenByDescending { it.rssi ?: -999 }))
     }
 
     private fun showScanDialog() {
@@ -281,8 +299,15 @@ class MainActivity : Activity(), Machine.Observer {
     private fun chooseTransport(f: Found) {
         stopScan()
         m.onLog("Elegido ${f.name} · ${f.device.address} · ${f.via.sorted().joinToString("+")}${f.rssi?.let { " · $it dBm" } ?: ""}")
-        // la Cameo 4 habla por Bluetooth clásico (verificado): sin preguntar
-        if (f.looksLikeCameo) { m.connectSpp(f.device); return }
+        // la Cameo 4 habla por Bluetooth clásico (verificado): sin preguntar. Se prueban todas sus
+        // direcciones (clásica primero); si una falla, la app intenta sola la otra.
+        if (f.looksLikeCameo) {
+            val same = found.values.filter { it.cleanName == f.cleanName }
+            val order = (listOf(f) + same).distinctBy { it.device.address }.sortedBy { it.sppRank }
+            m.onLog("Orden de conexión: " + order.joinToString(" → ") { "${it.device.address} (tipo ${it.device.type})" })
+            m.connectSppAny(order.map { it.device })
+            return
+        }
         when (f.device.type) {
             BluetoothDevice.DEVICE_TYPE_LE -> m.connectBle(f.device)
             BluetoothDevice.DEVICE_TYPE_CLASSIC -> m.connectSpp(f.device)
