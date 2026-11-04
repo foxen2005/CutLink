@@ -11,82 +11,33 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Conexión -->
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Encabezado: volver al visor -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/app_name"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/btnBack"
+                style="@style/Tool"
+                android:text="← Volver" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="Máquina"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/connState"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="16dp"
             android:text="Sin conexión"
-            android:textColor="@color/muted" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <Button
-                android:id="@+id/btnScan"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:backgroundTint="@color/accent"
-                android:text="Buscar Cameo"
-                android:textColor="#FF000000" />
-
-            <Button
-                android:id="@+id/btnChannels"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Canales BLE" />
-
-            <Button
-                android:id="@+id/btnDisconnect"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Desconectar" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <Button
-                android:id="@+id/btnStatus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Estado" />
-
-            <Button
-                android:id="@+id/btnFirmware"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Firmware" />
-
-            <Button
-                android:id="@+id/btnInit"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Inicializar" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnPython"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Probar Python (lector SVG / studio3)" />
+            android:textSize="18sp" />
 
         <TextView
             android:id="@+id/machineState"
@@ -94,168 +45,250 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:text="Máquina: —"
+            android:textColor="@color/muted"
             android:textSize="16sp" />
 
-        <!-- Mover el carro -->
-        <TextView
-            style="@style/Section"
-            android:text="Mover carro" />
-
+        <!-- Lo de todos los días: tres botones -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Paso"
-                android:textColor="@color/muted" />
-
-            <RadioGroup
-                android:id="@+id/stepGroup"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:orientation="horizontal">
-
-                <RadioButton android:id="@+id/step1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1 mm" />
-                <RadioButton android:id="@+id/step5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5" />
-                <RadioButton android:id="@+id/step10" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="10" />
-                <RadioButton android:id="@+id/step50" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="50" />
-            </RadioGroup>
-        </LinearLayout>
-
-        <GridLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="4dp"
-            android:columnCount="3"
-            android:rowCount="3">
-
-            <Space android:layout_width="88dp" android:layout_height="72dp" />
-            <Button android:id="@+id/btnUp" style="@style/Arrow" android:text="▲" />
-            <Space android:layout_width="88dp" android:layout_height="72dp" />
-
-            <Button android:id="@+id/btnLeft" style="@style/Arrow" android:text="◀" />
-            <Button android:id="@+id/btnHome" style="@style/Arrow" android:text="⌂" />
-            <Button android:id="@+id/btnRight" style="@style/Arrow" android:text="▶" />
-
-            <Space android:layout_width="88dp" android:layout_height="72dp" />
-            <Button android:id="@+id/btnDown" style="@style/Arrow" android:text="▼" />
-            <Space android:layout_width="88dp" android:layout_height="72dp" />
-        </GridLayout>
-
-        <TextView
-            android:id="@+id/position"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
-            android:text="X 0,0 · Y 0,0 mm (desde el origen)"
-            android:textColor="@color/muted" />
-
-        <!-- Corte de prueba -->
-        <TextView
-            style="@style/Section"
-            android:text="Corte de prueba: cuadrado 20 mm en X10 Y10" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical">
-
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Vel." android:textColor="@color/muted" />
-            <EditText
-                android:id="@+id/speed"
-                android:layout_width="56dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:text="10" />
-
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="Presión" android:textColor="@color/muted" />
-            <EditText
-                android:id="@+id/pressure"
-                android:layout_width="56dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:text="10" />
-
-            <Spinner
-                android:id="@+id/mat"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnCut"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:backgroundTint="@color/accent"
-            android:text="Cortar cuadrado"
-            android:textColor="#FF000000" />
-
-        <!-- Comando manual -->
-        <TextView
-            style="@style/Section"
-            android:text="Comando manual" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <EditText
-                android:id="@+id/rawCmd"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:fontFamily="monospace"
-                android:hint="FG   ·   hex:1b05"
-                android:imeOptions="actionSend"
-                android:inputType="textNoSuggestions|textVisiblePassword"
-                android:singleLine="true" />
+            android:layout_marginTop="12dp">
 
             <Button
-                android:id="@+id/btnSend"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Enviar" />
+                android:id="@+id/btnScan"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/accent"
+                android:text="Buscar Cameo"
+                android:textColor="#FF001F26"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/btnStatus"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:text="Estado"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/btnDisconnect"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:text="Desconectar"
+                android:textSize="16sp" />
         </LinearLayout>
 
-        <!-- Registro -->
+        <!-- Lo técnico, escondido -->
+        <Button
+            android:id="@+id/btnAdvanced"
+            style="@style/Tool"
+            android:layout_marginTop="24dp"
+            android:text="Opciones avanzadas ▾" />
+
         <LinearLayout
+            android:id="@+id/advBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical">
+            android:orientation="vertical"
+            android:visibility="gone">
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <Button
+                    android:id="@+id/btnFirmware"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Firmware" />
+
+                <Button
+                    android:id="@+id/btnInit"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Inicializar" />
+
+                <Button
+                    android:id="@+id/btnChannels"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Canales BLE" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnPython"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Probar Python (lector SVG / DXF / studio3)" />
+
+            <!-- Mover el carro -->
+            <!-- Mover el carro -->
             <TextView
                 style="@style/Section"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="Registro (lo más nuevo arriba)" />
-
-            <Button
-                android:id="@+id/btnShare"
+                android:text="Mover carro" />
+    
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical">
+    
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Paso"
+                    android:textColor="@color/muted" />
+    
+                <RadioGroup
+                    android:id="@+id/stepGroup"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:orientation="horizontal">
+    
+                    <RadioButton android:id="@+id/step1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1 mm" />
+                    <RadioButton android:id="@+id/step5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5" />
+                    <RadioButton android:id="@+id/step10" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="10" />
+                    <RadioButton android:id="@+id/step50" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="50" />
+                </RadioGroup>
+            </LinearLayout>
+    
+            <GridLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Compartir" />
-
-            <Button
-                android:id="@+id/btnClear"
-                android:layout_width="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="4dp"
+                android:columnCount="3"
+                android:rowCount="3">
+    
+                <Space android:layout_width="88dp" android:layout_height="72dp" />
+                <Button android:id="@+id/btnUp" style="@style/Arrow" android:text="▲" />
+                <Space android:layout_width="88dp" android:layout_height="72dp" />
+    
+                <Button android:id="@+id/btnLeft" style="@style/Arrow" android:text="◀" />
+                <Button android:id="@+id/btnHome" style="@style/Arrow" android:text="⌂" />
+                <Button android:id="@+id/btnRight" style="@style/Arrow" android:text="▶" />
+    
+                <Space android:layout_width="88dp" android:layout_height="72dp" />
+                <Button android:id="@+id/btnDown" style="@style/Arrow" android:text="▼" />
+                <Space android:layout_width="88dp" android:layout_height="72dp" />
+            </GridLayout>
+    
+            <TextView
+                android:id="@+id/position"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Limpiar" />
+                android:gravity="center_horizontal"
+                android:text="X 0,0 · Y 0,0 mm (desde el origen)"
+                android:textColor="@color/muted" />
+    
+            <!-- Corte de prueba -->
+            <TextView
+                style="@style/Section"
+                android:text="Corte de prueba: cuadrado 20 mm en X10 Y10" />
+    
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical">
+    
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Vel." android:textColor="@color/muted" />
+                <EditText
+                    android:id="@+id/speed"
+                    android:layout_width="56dp"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:text="10" />
+    
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="Presión" android:textColor="@color/muted" />
+                <EditText
+                    android:id="@+id/pressure"
+                    android:layout_width="56dp"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:text="10" />
+    
+                <Spinner
+                    android:id="@+id/mat"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+            </LinearLayout>
+    
+            <Button
+                android:id="@+id/btnCut"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:backgroundTint="@color/accent"
+                android:text="Cortar cuadrado"
+                android:textColor="#FF000000" />
+    
+            <!-- Comando manual -->
+            <TextView
+                style="@style/Section"
+                android:text="Comando manual" />
+    
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+    
+                <EditText
+                    android:id="@+id/rawCmd"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="monospace"
+                    android:hint="FG   ·   hex:1b05"
+                    android:imeOptions="actionSend"
+                    android:inputType="textNoSuggestions|textVisiblePassword"
+                    android:singleLine="true" />
+    
+                <Button
+                    android:id="@+id/btnSend"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Enviar" />
+            </LinearLayout>
+    
+            <!-- Registro -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical">
+    
+                <TextView
+                    style="@style/Section"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:text="Registro (lo más nuevo arriba)" />
+    
+                <Button
+                    android:id="@+id/btnShare"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Compartir" />
+    
+                <Button
+                    android:id="@+id/btnClear"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Limpiar" />
+            </LinearLayout>
+    
+            <TextView
+                android:id="@+id/log"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/panel"
+                android:fontFamily="monospace"
+                android:padding="8dp"
+                android:textIsSelectable="true"
+                android:textSize="12sp" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/log"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/panel"
-            android:fontFamily="monospace"
-            android:padding="8dp"
-            android:textIsSelectable="true"
-            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

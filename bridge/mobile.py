@@ -121,6 +121,35 @@ def load(path: str | os.PathLike, cache_dir: str | os.PathLike | None = None,
     }
 
 
+def presets() -> dict:
+    """Materiales y cuchillas: los mismos JSON que usa el panel de Illustrator. Si junto a este
+    módulo hay un user_presets.json (los propios del PC, copiados al compilar la app), sus
+    materiales van primero y marcados como propios, como en el panel."""
+    base = Path(__file__).parent
+    materials = json.loads((base / "materials.json").read_text(encoding="utf-8"))
+    blades = json.loads((base / "blades.json").read_text(encoding="utf-8"))
+    user_file = base / "user_presets.json"
+    if user_file.exists():
+        user = json.loads(user_file.read_text(encoding="utf-8"))
+
+        def merge(builtin, own):
+            # como presets._merge del panel: el propio reemplaza al de fábrica con el mismo id
+            out = {b["id"]: dict(b) for b in builtin}
+            for u in own:
+                out[u["id"]] = dict(u, own=True)
+            return list(out.values())
+
+        materials = merge(materials, user.get("materials", []))
+        blades = merge(blades, user.get("blades", []))
+        # los materiales propios primero en la lista, como en el panel
+        materials.sort(key=lambda m: not m.get("own"))
+    return {"materials": materials, "blades": blades}
+
+
+def presets_json() -> str:
+    return json.dumps(presets(), ensure_ascii=False)
+
+
 def load_json(path: str, cache_dir: str | None = None, tolerance_mm: float = 0.1) -> str:
     """Para Kotlin: nunca lanza; los errores vuelven como {"ok": false, "error": ...}."""
     try:

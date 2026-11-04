@@ -84,6 +84,48 @@ class GpglTest {
         assertEquals("sin material", Gpgl.statusName("2\r"))
     }
 
+    // ---- Print & Cut: mismos casos que test_gpgl.py ----
+    @Test
+    fun plotOffsetShiftsToRegmarkOrigin() {
+        val cmds = Gpgl.plotCommands(listOf(listOf(15.0 to 15.0, 25.0 to 15.0)), doubleArrayOf(15.0, 15.0, 25.0, 15.0), offset = 10.0 to 10.0)
+        assertTrue("M100,100" in cmds && "D100,300" in cmds)
+    }
+
+    @Test
+    fun regmarkSearchGeometry() =
+        assertEquals("TB123,5540,3800,200,200", Gpgl.regmarkSearchCommand(Gpgl.Regmarks(210.0, 297.0)))
+
+    @Test
+    fun regmarkBottomInsetReducesHeight() {
+        val r = Gpgl.Regmarks(210.0, 297.0, insetBottom = 25.0)
+        assertEquals(262.0, r.height, 1e-9)
+        assertEquals("TB123,5240,3800,200,200", Gpgl.regmarkSearchCommand(r))
+    }
+
+    @Test
+    fun regmarkSearchAddsMatOffset() =
+        assertEquals("TB123,5540,3800,500,300", Gpgl.regmarkSearchCommand(Gpgl.Regmarks(210.0, 297.0), 5.0 to 15.0))
+
+    @Test
+    fun regmarkSetupUsesThicknessAndLength() {
+        val cmds = Gpgl.regmarkCommands(Gpgl.Regmarks(210.0, 297.0, thick = 0.3))
+        assertTrue("TB51,400" in cmds && "TB53,6" in cmds)
+    }
+
+    @Test
+    fun manualRegmarkUsesTB23() =
+        assertEquals("TB23,5240,3800", Gpgl.regmarkSearchCommand(Gpgl.Regmarks(210.0, 297.0, insetBottom = 25.0, manual = true), 5.0 to 5.0))
+
+    @Test
+    fun searchOffsetShiftsStartAndClamps() =
+        // top = 10 − 15 -> se recorta a 0; left = 10 + 5
+        assertEquals("TB123,5540,3800,0,300", Gpgl.regmarkSearchCommand(Gpgl.Regmarks(210.0, 297.0, searchX = 5.0, searchY = -15.0)))
+
+    @Test
+    fun calibratedDefaultsOfJeansCameo() =
+        // A4 sin mat con los valores del panel: inset 10, inferior 25, búsqueda −11/−8
+        assertEquals("TB123,5240,3800,40,0", Gpgl.regmarkSearchCommand(Gpgl.Regmarks(210.0, 297.0, insetBottom = 25.0, searchX = -11.0, searchY = -8.0)))
+
     @Test
     fun describeShowsControlsAndHex() {
         assertEquals("<ESC><ENQ>  [1B 05]", CameoSession.describe(byteArrayOf(0x1b, 0x05)))

@@ -91,6 +91,27 @@ def test_each_studio3_gets_its_own_image_folder(tmp_path):
     assert da != db and da == mobile._image_dir(str(a), tmp_path / "cache")   # estable al reabrir
 
 
+def test_presets_have_materials_and_blades():
+    p = mobile.presets()
+    ids = {b["id"] for b in p["blades"]}
+    assert p["materials"] and all(m["blade_id"] in ids for m in p["materials"])
+
+
+def test_user_presets_override_by_id(tmp_path, monkeypatch):
+    import shutil
+    pkg = tmp_path / "bridge"
+    shutil.copytree(Path(mobile.__file__).parent, pkg, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+    (pkg / "user_presets.json").write_text(json.dumps({
+        "materials": [{"id": "vinilo", "name": "Mi vinilo", "pressure": 9, "speed": 7, "passes": 1, "blade_id": "ratchet"}],
+        "blades": [{"id": "ratchet", "name": "Mi trinquete", "type": "ratchet", "offset_mm": 0.3, "tool": 1}],
+    }), encoding="utf-8")
+    monkeypatch.setattr(mobile, "__file__", str(pkg / "mobile.py"))
+    p = mobile.presets()
+    assert [m["id"] for m in p["materials"]].count("vinilo") == 1 and p["materials"][0]["name"] == "Mi vinilo"
+    ratchet = [b for b in p["blades"] if b["id"] == "ratchet"]
+    assert len(ratchet) == 1 and ratchet[0]["offset_mm"] == 0.3
+
+
 def test_load_json_never_raises(tmp_path):
     bad = tmp_path / "x.txt"
     bad.write_text("hola")

@@ -19,15 +19,50 @@
         android:label="@string/app_name"
         android:theme="@style/AppTheme"
         android:supportsRtl="false">
+        <!-- Visor: pantalla principal, y la que recibe "Abrir con…" / "Compartir" -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ViewerActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustPan">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/svg+xml" />
+                <data android:mimeType="application/dxf" />
+                <data android:mimeType="application/x-dxf" />
+                <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="image/x-dxf" />
+                <!-- .studio3 (y DXF de algunos gestores) llegan como binario genérico -->
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <!-- Compartir: el archivo viene en EXTRA_STREAM, sin URI de datos -> filtro solo por tipo -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/svg+xml" />
+                <data android:mimeType="application/dxf" />
+                <data android:mimeType="application/x-dxf" />
+                <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="image/x-dxf" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
+
+        <!-- Máquina: conectar, estado, mover el carro, prueba, registro (se abre desde el visor) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:label="Máquina"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

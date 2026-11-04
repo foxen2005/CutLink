@@ -99,7 +99,8 @@ class CameoSession(private val log: (String) -> Unit) {
                     }
                 }
             }
-            if (data.size > 48) return "$text  (${data.size} B)"
+            // bloques grandes (64 comandos de un corte): solo el comienzo, si no el registro pesa cientos de KB
+            if (data.size > 48) return "${if (text.length > 120) text.take(120) + "…" else text}  (${data.size} B)"
             val hex = data.joinToString(" ") { "%02X".format(it.toInt() and 0xff) }
             return "$text  [$hex]"
         }

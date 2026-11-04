@@ -11,8 +11,8 @@ android {
         applicationId = "cl.digitalfox.cameolink"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // La Pad 8 Pro y los teléfonos actuales son arm64; x86_64 solo para el emulador
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -32,6 +32,9 @@ val syncBridge by tasks.registering(Sync::class) {
             "materials.json", "blades.json")
         into("bridge")
     }
+    // presets propios del PC (los que guarda el panel de Illustrator), si existen
+    val userPresets = File(System.getenv("APPDATA") ?: "", "CameoCut/presets.json")
+    if (userPresets.isFile) from(userPresets) { rename { "user_presets.json" }; into("bridge") }
     // archivos de prueba (uno por formato) para el botón "Probar Python"
     from("../../bridge/tests/fixtures") {
         include("circles_6x6.studio3", "square50.svg", "etiquetas_90x50.dxf")

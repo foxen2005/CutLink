@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical">
+
+    <!-- barra superior -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/panel"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnOpen"
+            style="@style/Tool"
+            android:layout_marginStart="12dp"
+            android:text="Abrir archivo" />
+
+        <TextView
+            android:id="@+id/fileName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:ellipsize="middle"
+            android:singleLine="true"
+            android:text="Ningún archivo abierto"
+            android:textColor="@color/muted" />
+
+        <Button
+            android:id="@+id/btnTools"
+            style="@style/Tool"
+            android:text="✎ Herramientas"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/connPill"
+            style="@style/Tool"
+            android:layout_marginStart="8dp"
+            android:text="● Sin conexión" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <cl.digitalfox.cameolink.CanvasView
+                android:id="@+id/canvas"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <LinearLayout
+                android:id="@+id/emptyBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Abre un diseño para cortar"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="SVG · DXF · Silhouette .studio3"
+                    android:textColor="@color/muted" />
+
+                <Button
+                    android:id="@+id/btnOpen2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:backgroundTint="@color/accent"
+                    android:text="Abrir archivo"
+                    android:textColor="#FF001F26" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="También desde Archivos, Drive o WhatsApp con «Abrir con… Cameo Link»"
+                    android:textColor="@color/muted" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/supportChip"
+                style="@style/Tool"
+                android:layout_gravity="top|start"
+                android:layout_margin="10dp"
+                android:visibility="gone" />
+
+            <!-- columna a la derecha: no tapa la hoja (en fila arriba se montaba sobre el dibujo) -->
+            <ScrollView
+                android:id="@+id/editBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="10dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:background="@color/panel"
+                    android:orientation="vertical"
+                    android:padding="4dp">
+
+                    <Button android:id="@+id/bGroup" style="@style/Tool" android:layout_width="match_parent" android:text="Agrupar" />
+                    <Button android:id="@+id/bUngroup" style="@style/Tool" android:layout_width="match_parent" android:text="Desagrupar" />
+                    <Button android:id="@+id/bDup" style="@style/Tool" android:layout_width="match_parent" android:text="Duplicar" />
+                    <Button android:id="@+id/bRot" style="@style/Tool" android:layout_width="match_parent" android:text="↻ 90°" />
+                    <Button android:id="@+id/bFlipH" style="@style/Tool" android:layout_width="match_parent" android:text="⇋ Reflejar" />
+                    <Button android:id="@+id/bFlipV" style="@style/Tool" android:layout_width="match_parent" android:text="⇵ Reflejar" />
+                    <Button android:id="@+id/bDel" style="@style/Tool" android:layout_width="match_parent" android:text="Eliminar" android:textColor="#FFFF9FD0" />
+                </LinearLayout>
+            </ScrollView>
+
+            <HorizontalScrollView
+                android:id="@+id/viewBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|start"
+                android:layout_margin="10dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content">
+
+                    <Button android:id="@+id/bZoomIn" style="@style/Tool" android:text="+" />
+                    <Button android:id="@+id/bZoomOut" style="@style/Tool" android:text="−" />
+                    <Button android:id="@+id/bFit" style="@style/Tool" android:text="⤢" />
+                    <Button android:id="@+id/bMulti" style="@style/Tool" android:text="▣ Selección múltiple" />
+                    <Button android:id="@+id/bAll" style="@style/Tool" android:text="Todo" />
+                    <Button android:id="@+id/bUndo" style="@style/Tool" android:text="↶" />
+                    <Button android:id="@+id/bRedo" style="@style/Tool" android:text="↷" />
+                </LinearLayout>
+            </HorizontalScrollView>
+
+            <LinearLayout
+                android:id="@+id/progressBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:layout_margin="10dp"
+                android:background="@color/panel"
+                android:gravity="center_vertical"
+                android:padding="10dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/progressText"
+                    android:layout_width="220dp"
+                    android:layout_height="wrap_content"
+                    android:text="Cortando…" />
+
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="1000" />
+
+                <Button
+                    android:id="@+id/bStop"
+                    style="@style/Tool"
+                    android:layout_marginStart="10dp"
+                    android:text="Detener"
+                    android:textColor="#FFFF9FD0" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- panel derecho -->
+        <LinearLayout
+            android:layout_width="320dp"
+            android:layout_height="match_parent"
+            android:background="@color/panel"
+            android:orientation="vertical">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:paddingBottom="12dp">
+
+                    <LinearLayout
+                        android:id="@+id/selSec"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView style="@style/Section" android:layout_marginTop="12dp" android:text="SELECCIÓN" />
+
+                        <TextView
+                            android:id="@+id/selTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/muted" />
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <EditText android:id="@+id/fx" style="@style/Num" android:hint="X mm" />
+                            <EditText android:id="@+id/fy" style="@style/Num" android:hint="Y mm" />
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <EditText android:id="@+id/fw" style="@style/Num" android:hint="Ancho mm" />
+                            <EditText android:id="@+id/fh" style="@style/Num" android:hint="Alto mm" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/swLock"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:checked="true"
+                            android:text="Mantener proporción" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Esquinas = tamaño · ↻ = girar (imán cada 15°) · arrastrar = mover · 2 dedos = zoom"
+                            android:textColor="@color/muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView style="@style/Section" android:text="DOCUMENTO" />
+
+                    <TextView
+                        android:id="@+id/docInfo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingExtra="3dp"
+                        android:text="Sin documento."
+                        android:textColor="@color/muted" />
+
+                    <TextView
+                        android:id="@+id/docWarn"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textColor="#FFFF9FD0"
+                        android:visibility="gone" />
+
+                    <TextView style="@style/Section" android:text="PRINT &amp; CUT (MARCAS)" />
+
+                    <Switch
+                        android:id="@+id/swPnc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Leer marcas antes de cortar" />
+
+                    <LinearLayout
+                        android:id="@+id/pncBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <RadioGroup
+                            android:id="@+id/pncMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <RadioButton android:id="@+id/pncAuto" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="Automático" />
+                            <RadioButton android:id="@+id/pncManual" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="12dp" android:text="Manual" />
+                        </RadioGroup>
+
+                        <TextView
+                            android:id="@+id/pncManualNote"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="En «Máquina» → Opciones avanzadas → Mover carro, deja la cuchilla justo sobre el cuadrado negro y luego corta."
+                            android:textColor="@color/muted"
+                            android:textSize="12sp"
+                            android:visibility="gone" />
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <EditText android:id="@+id/pInset" style="@style/Num" android:hint="Inset" android:text="10" />
+                            <EditText android:id="@+id/pInsetB" style="@style/Num" android:hint="Inferior" android:text="25" />
+                            <EditText android:id="@+id/pThick" style="@style/Num" android:hint="Grosor" android:text="0.5" />
+                        </LinearLayout>
+
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="inset · inferior · grosor (mm)" android:textColor="@color/muted" android:textSize="12sp" />
+
+                        <LinearLayout android:id="@+id/pSearchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <EditText android:id="@+id/pSearchX" style="@style/Num" android:hint="Búsq. X" android:text="-11" />
+                            <EditText android:id="@+id/pSearchY" style="@style/Num" android:hint="Búsq. Y" android:text="-8" />
+                            <EditText android:id="@+id/pCalX" style="@style/Num" android:hint="Calib. X" android:text="0" />
+                            <EditText android:id="@+id/pCalY" style="@style/Num" android:hint="Calib. Y" android:text="0" />
+                        </LinearLayout>
+
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ajuste de búsqueda X · Y · calibración X · Y (mm)" android:textColor="@color/muted" android:textSize="12sp" />
+
+                        <!-- uno debajo del otro: lado a lado el texto no cabía en el panel y se cortaba -->
+                        <Button android:id="@+id/bPrint" style="@style/Tool" android:layout_width="match_parent" android:layout_marginTop="6dp" android:text="Imprimir con marcas" />
+                        <Button android:id="@+id/bSearch" style="@style/Tool" android:layout_width="match_parent" android:text="Probar búsqueda" />
+
+                        <TextView
+                            android:id="@+id/pncWarn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textColor="#FFFF9FD0"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Valores por defecto = los calibrados en tu Cameo (−11 / −8, inset 10, inferior 25 sin mat). Imprime al 100 % (tamaño real)."
+                            android:textColor="@color/muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView style="@style/Section" android:text="MATERIAL" />
+
+                    <Spinner
+                        android:id="@+id/material"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                        <EditText android:id="@+id/speed" style="@style/Num" android:hint="Velocidad" />
+                        <EditText android:id="@+id/pressure" style="@style/Num" android:hint="Presión" />
+                        <EditText android:id="@+id/passes" style="@style/Num" android:hint="Pasadas" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="velocidad · presión · pasadas"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+
+                    <TextView style="@style/Section" android:text="CUCHILLA" />
+
+                    <TextView
+                        android:id="@+id/bladeName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <EditText
+                        android:id="@+id/offset"
+                        style="@style/Num"
+                        android:layout_width="match_parent"
+                        android:hint="Offset mm" />
+
+                    <TextView
+                        android:id="@+id/offsetNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="12sp" />
+
+                    <Switch
+                        android:id="@+id/swSharpen"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Esquinas afiladas" />
+                </LinearLayout>
+            </ScrollView>
+
+            <Button
+                android:id="@+id/bCut"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_margin="10dp"
+                android:backgroundTint="@color/accent"
+                android:enabled="false"
+                android:text="Cortar"
+                android:textColor="#FF001F26"
+                android:textSize="17sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
