@@ -142,7 +142,13 @@ object Machine : LinkListener {
         changed()
     }
 
-    fun toast(msg: String) = ui.post { Toast.makeText(app, msg, Toast.LENGTH_SHORT).show() }
+    /** La pantalla al frente muestra los avisos con su propio estilo; sin pantalla, el Toast del sistema. */
+    var toaster: ((String) -> Unit)? = null
+
+    fun toast(msg: String) = ui.post {
+        val show = toaster
+        if (show != null) show(msg) else Toast.makeText(app, msg, Toast.LENGTH_SHORT).show()
+    }
 
     fun setMachine(msg: String) { machineText = msg; changed() }
     private fun setConn(msg: String) { connText = msg; changed() }

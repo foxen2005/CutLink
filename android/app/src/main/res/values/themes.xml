@@ -45,23 +45,26 @@
         <item name="android:textColor">@color/tool_text</item>
         <item name="android:fontFamily">@font/barlow_semibold</item>
         <item name="android:stateListAnimator">@null</item>
-        <item name="android:minHeight">44dp</item>
-        <item name="android:minWidth">44dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:minWidth">48dp</item>
     </style>
 
     <style name="AppSwitch" parent="@android:style/Widget.Material.Light.CompoundButton.Switch">
         <item name="android:thumb">@drawable/bg_switch_thumb</item>
         <item name="android:track">@drawable/bg_switch_track</item>
-        <item name="android:switchMinWidth">46dp</item>
+        <item name="android:switchMinWidth">52dp</item>
         <item name="android:thumbTextPadding">0dp</item>
         <item name="android:switchPadding">8dp</item>
         <item name="android:textColor">@color/ink</item>
         <item name="android:fontFamily">@font/barlow_semibold</item>
-        <item name="android:minHeight">44dp</item>
+        <item name="android:minHeight">48dp</item>
     </style>
 
     <style name="AppDialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
         <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:fontFamily">@font/barlow</item>
+        <item name="android:buttonBarStyle">@style/DialogBar</item>
         <item name="android:colorBackground">@color/paper</item>
         <item name="android:colorAccent">@color/cyan</item>
         <item name="android:colorControlActivated">@color/ink</item>
@@ -74,6 +77,14 @@
         <item name="android:buttonBarPositiveButtonStyle">@style/DialogPositive</item>
         <item name="android:buttonBarNegativeButtonStyle">@style/DialogNegative</item>
         <item name="android:buttonBarNeutralButtonStyle">@style/DialogNegative</item>
+    </style>
+
+    <!-- El velo lo pone la pantalla (Ui.kt): el atenuado del sistema solo sabe ser negro -->
+    <style name="DialogBar">
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">24dp</item>
     </style>
 
     <style name="DialogTitle">
@@ -105,7 +116,6 @@
         <item name="android:background">@drawable/bg_primary</item>
         <item name="android:textColor">@color/primary_text</item>
         <item name="android:fontFamily">@font/barlow_bold</item>
-        <item name="android:layout_marginEnd">10dp</item>
     </style>
 
     <!-- La jerarquía la lleva la tipografía: sin mayúsculas forzadas ni color de acento -->
@@ -136,7 +146,7 @@
     <!-- Barra superior: texto con icono, sin fondo hasta tocarlo -->
     <style name="Flat" parent="AppButton">
         <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:background">@drawable/bg_flat</item>
         <item name="android:paddingStart">8dp</item>
         <item name="android:paddingEnd">12dp</item>
@@ -147,7 +157,7 @@
 
     <style name="Tool" parent="AppButton">
         <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:paddingStart">14dp</item>
         <item name="android:paddingEnd">14dp</item>
         <item name="android:textSize">15sp</item>
@@ -155,16 +165,18 @@
 
     <!-- Solo icono: siempre con contentDescription y tooltipText -->
     <style name="IconBtn">
-        <item name="android:layout_width">44dp</item>
-        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:background">@drawable/bg_flat</item>
-        <item name="android:padding">10dp</item>
+        <item name="android:padding">12dp</item>
         <item name="android:scaleType">fitCenter</item>
     </style>
 
+    <!-- Barra inferior: más chica por pedido de Jean -->
     <style name="BarIcon" parent="IconBtn">
         <item name="android:layout_width">40dp</item>
         <item name="android:layout_height">40dp</item>
+        <item name="android:padding">10dp</item>
     </style>
 
     <style name="BarText" parent="AppButton">
@@ -183,7 +195,7 @@
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">54dp</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:layout_margin">2dp</item>
+        <item name="android:layout_margin">3dp</item>
         <item name="android:paddingTop">5dp</item>
         <item name="android:paddingBottom">4dp</item>
         <item name="android:paddingStart">2dp</item>
@@ -226,7 +238,7 @@
         <item name="android:clickable">true</item>
         <item name="android:longClickable">true</item>
         <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:background">@drawable/bg_field</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:paddingStart">10dp</item>
@@ -243,7 +255,7 @@
 
     <style name="Seg">
         <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">38dp</item>
+        <item name="android:layout_height">44dp</item>
         <item name="android:layout_weight">1</item>
         <item name="android:background">@drawable/bg_seg_item</item>
         <item name="android:button">@null</item>

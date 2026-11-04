@@ -27,7 +27,6 @@ import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
-import android.widget.Toast
 
 /**
  * Pantalla de máquina: conectar (BLE o clásico), estado, firmware, mover el carro, cuadrado de
@@ -120,8 +119,9 @@ class MainActivity : Activity(), Machine.Observer {
         findViewById<Button>(R.id.btnClear).setOnClickListener { m.logLines.clear(); onMachineChanged() }
     }
 
-    override fun onResume() { super.onResume(); m.listen(this) }
-    override fun onPause() { m.unlisten(this); super.onPause() }
+    override fun onResume() { super.onResume(); m.toaster = { pill(it) }; m.listen(this) }
+    override fun onPause() { m.toaster = null; m.unlisten(this); super.onPause() }
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); veil(!hasFocus) }
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
@@ -147,6 +147,16 @@ class MainActivity : Activity(), Machine.Observer {
             else -> m.connText.substringAfter("Sin conexión: ", "Enciende la Cameo y búscala")
         }
         renderDevices()
+        // la acción principal es buscar solo cuando falta la máquina
+        val needsSearch = !m.connected && !m.connecting
+        findViewById<Button>(R.id.btnScan).apply {
+            text = if (scanning) "Buscando…" else "Buscar Cameo"
+            isEnabled = !scanning
+            if (needsSearch != scanIsPrimary) {
+                scanIsPrimary = needsSearch
+                setBackgroundResource(if (needsSearch) R.drawable.bg_primary else R.drawable.bg_round)
+            }
+        }
         position.text = "X ${nf(m.posX)} · Y ${nf(m.posY)} mm desde el origen"
         logView.text = m.logLines.take(300).joinToString("\n")     // lo más nuevo; Compartir manda todo
     }
@@ -219,6 +229,7 @@ class MainActivity : Activity(), Machine.Observer {
     private val found = linkedMapOf<String, Found>()
     private var devices: List<Found> = emptyList()
     private var shownDevices: List<Any?>? = null
+    private var scanIsPrimary: Boolean? = null
     private var scanning = false
     private var receiverRegistered = false
 
@@ -259,7 +270,7 @@ class MainActivity : Activity(), Machine.Observer {
         renderDevices()
     }
 
-    private val endScan = Runnable { stopScan(); renderDevices() }
+    private val endScan = Runnable { stopScan(); onMachineChanged() }
 
     /** Busca 15 s; la lista se llena en la misma pantalla. */
     private fun startSearch() {
@@ -268,7 +279,7 @@ class MainActivity : Activity(), Machine.Observer {
         found.clear(); devices = emptyList()
         for (d in m.adapter.bondedDevices.orEmpty()) addFound(d, d.name, null, "Emparejado")
         startScan()
-        renderDevices()
+        onMachineChanged()
         ui.postDelayed(endScan, 15_000)
     }
 
@@ -282,7 +293,9 @@ class MainActivity : Activity(), Machine.Observer {
         findViewById<TextView>(R.id.foundTitle).text = if (scanning) "Buscando… (enciende la Cameo)" else "Encontradas"
         val box = findViewById<LinearLayout>(R.id.devBox)
         box.removeAllViews()
-        for (f in devices) box.addView(LinearLayout(this).apply {
+        for ((i, f) in devices.withIndex()) {
+            if (i > 0) box.addView(View(this).apply { setBackgroundColor(getColor(R.color.rule)) }, LinearLayout.LayoutParams(-1, 1))
+            box.addView(LinearLayout(this).apply {
             gravity = android.view.Gravity.CENTER_VERTICAL
             minimumHeight = dp(56f).toInt()
             setBackgroundResource(R.drawable.bg_row)
@@ -294,7 +307,10 @@ class MainActivity : Activity(), Machine.Observer {
                     text = f.cleanName; textSize = 15f; setTextColor(getColor(R.color.ink))
                     typeface = resources.getFont(R.font.barlow_semibold)
                 })
-                if ("Emparejado" in f.via) addView(TextView(context).apply { text = "Emparejada"; textSize = 13f; setTextColor(getColor(R.color.ink_2)) })
+                addView(TextView(context).apply {
+                    text = if (!f.looksLikeCameo) "Otro dispositivo" else if ("Emparejado" in f.via) "Emparejada" else "Cameo"
+                    textSize = 13f; setTextColor(getColor(R.color.ink_2))
+                })
             }, LinearLayout.LayoutParams(0, -2, 1f))
             if (f.device.address == here) addView(TextView(context).apply {
                 text = "Conectada"; textSize = 13f; setTextColor(getColor(R.color.ink))
@@ -302,7 +318,8 @@ class MainActivity : Activity(), Machine.Observer {
                 setBackgroundResource(R.drawable.bg_tag)
                 setPadding(dp(10f).toInt(), dp(3f).toInt(), dp(10f).toInt(), dp(3f).toInt())
             })
-        })
+            })
+        }
         if (devices.isEmpty()) box.addView(TextView(this).apply {
             text = if (scanning) "Sin resultados todavía" else "Toca Buscar Cameo"
             textSize = 14f; setTextColor(getColor(R.color.ink_2))
@@ -469,7 +486,7 @@ class MainActivity : Activity(), Machine.Observer {
         }, "Compartir registro"))
     }
 
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun toast(msg: String) = pill(msg)
 
     companion object {
         private const val REQ_PERMS = 1

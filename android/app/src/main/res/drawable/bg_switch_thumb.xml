@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="4dp">
-    <shape android:shape="oval"><solid android:color="@color/ink" /><size android:width="20dp" android:height="20dp" /></shape>
-</inset>
+<!-- Sin <inset>: Switch descuenta su relleno y el interruptor salía más chico que el dibujo -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="oval"><solid android:color="#00000000" /><size android:width="26dp" android:height="28dp" /></shape></item>
+    <item android:left="3dp" android:right="3dp" android:top="4dp" android:bottom="4dp"><shape android:shape="oval"><solid android:color="@color/ink" /></shape></item>
+</layer-list>

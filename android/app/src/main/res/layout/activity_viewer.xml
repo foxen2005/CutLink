@@ -52,7 +52,7 @@
         <LinearLayout
             android:id="@+id/connPill"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="48dp"
             android:layout_marginStart="4dp"
             android:background="@drawable/bg_pill"
             android:clickable="true"
@@ -95,7 +95,9 @@
             <cl.digitalfox.cameolink.CanvasView
                 android:id="@+id/canvas"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" />
+                android:layout_height="match_parent"
+                android:focusable="true"
+                android:focusedByDefault="true" />
 
             <LinearLayout
                 android:id="@+id/emptyBox"
@@ -169,7 +171,7 @@
                     android:id="@+id/supportChip"
                     style="@style/AppButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="44dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/bg_chip"
                     android:elevation="6dp"
                     android:fontFeatureSettings="tnum"
@@ -192,8 +194,8 @@
                     android:padding="2dp"
                     android:visibility="gone">
 
-                    <ImageButton android:id="@+id/bUndo" style="@style/BarIcon" android:contentDescription="Deshacer" android:src="@drawable/ic_undo" android:tooltipText="Deshacer" />
-                    <ImageButton android:id="@+id/bRedo" style="@style/BarIcon" android:contentDescription="Rehacer" android:src="@drawable/ic_redo" android:tooltipText="Rehacer" />
+                    <ImageButton android:id="@+id/bUndo" style="@style/IconBtn" android:contentDescription="Deshacer" android:src="@drawable/ic_undo" android:tooltipText="Deshacer" />
+                    <ImageButton android:id="@+id/bRedo" style="@style/IconBtn" android:contentDescription="Rehacer" android:src="@drawable/ic_redo" android:tooltipText="Rehacer" />
                     <View android:layout_width="1dp" android:layout_height="24dp" android:layout_marginStart="2dp" android:layout_marginEnd="8dp" android:background="@color/rule" />
                     <cl.digitalfox.cameolink.ScaleBar android:id="@+id/scaleBar" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="4dp" />
                 </LinearLayout>
@@ -223,8 +225,8 @@
                     <Button android:id="@+id/bCenter" style="@style/Cell" android:drawableTop="@drawable/ic_center" android:text="Centrar" />
                 </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
-                    <Button android:id="@+id/bFlipH" style="@style/Cell" android:drawableTop="@drawable/ic_flip_h" android:text="Reflejar ↔" />
-                    <Button android:id="@+id/bFlipV" style="@style/Cell" android:drawableTop="@drawable/ic_flip_v" android:text="Reflejar ↕" />
+                    <Button android:id="@+id/bFlipH" style="@style/Cell" android:drawableTop="@drawable/ic_flip_h" android:text="Reflejar H" />
+                    <Button android:id="@+id/bFlipV" style="@style/Cell" android:drawableTop="@drawable/ic_flip_v" android:text="Reflejar V" />
                 </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
                     <Button android:id="@+id/bLayerUp" style="@style/Cell" android:drawableTop="@drawable/ic_up" android:text="Subir" />
@@ -269,11 +271,17 @@
                 android:orientation="vertical"
                 android:visibility="gone">
 
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center_vertical">
+
                 <TextView
                     android:id="@+id/summary"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginEnd="8dp"
                     android:background="@drawable/bg_summary"
                     android:elevation="6dp"
                     android:fontFeatureSettings="tnum"
@@ -290,13 +298,13 @@
                     android:id="@+id/bPanel"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:layout_marginBottom="8dp"
                     android:background="@drawable/bg_round"
                     android:contentDescription="Abrir o cerrar el panel"
                     android:elevation="6dp"
                     android:outlineSpotShadowColor="@color/ink"
                     android:src="@drawable/ic_chevron_right"
                     android:tooltipText="Panel" />
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/bCut"
@@ -544,7 +552,7 @@
                         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
                             <LinearLayout style="@style/FieldBox"><TextView style="@style/FieldLabel" android:text="Inset" /><EditText android:id="@+id/pInset" style="@style/Num" android:text="10" /></LinearLayout>
                             <LinearLayout style="@style/FieldBox"><TextView style="@style/FieldLabel" android:text="Inferior" /><EditText android:id="@+id/pInsetB" style="@style/Num" android:text="25" /></LinearLayout>
-                            <LinearLayout style="@style/FieldBox"><TextView style="@style/FieldLabel" android:text="Grosor" /><EditText android:id="@+id/pThick" style="@style/Num" android:text="0.5" /></LinearLayout>
+                            <LinearLayout style="@style/FieldBox"><TextView style="@style/FieldLabel" android:text="Grosor" /><EditText android:id="@+id/pThick" style="@style/Num" android:text="0,5" /></LinearLayout>
                         </LinearLayout>
 
                         <LinearLayout android:id="@+id/pSearchRow" android:layout_width="match_parent" android:layout_height="wrap_content">
@@ -565,7 +573,7 @@
                 <Spinner
                     android:id="@+id/material"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="48dp"
                     android:layout_marginEnd="8dp"
                     android:background="@drawable/bg_spinner"
                     android:popupBackground="@drawable/bg_summary" />

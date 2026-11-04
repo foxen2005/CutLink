@@ -209,6 +209,9 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         // origen de la cuchilla
         fill.color = cCyan
         c.drawCircle(sx(0.0), sy(0.0), 5 * dp, fill)
+        stroke.color = cInk; stroke.strokeWidth = 1.5f * dp
+        c.drawLine(sx(0.0) - 9 * dp, sy(0.0), sx(0.0) + 9 * dp, sy(0.0), stroke)
+        c.drawLine(sx(0.0), sy(0.0) - 9 * dp, sx(0.0), sy(0.0) + 9 * dp, stroke)
         drawSelection(c, d)
     }
 
@@ -258,6 +261,8 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
             val b = Item.bboxOf(w)
             if (above.none { q -> q[0] < b[2] && q[2] > b[0] && q[1] < b[3] && q[3] > b[1] }) continue
             val col = if (it.id in selIds) cCyan else if (outside(w, sup)) cMag else cInk
+            // el trazo claro debajo hace legible el punteado sobre arte oscuro
+            drawPoly(c, w, false, cSheet, 3 * dp, effect = hidden)
             drawPoly(c, w, false, col, 1.5f * dp, effect = hidden)
         }
     }

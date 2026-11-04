@@ -27,5 +27,5 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Pendiente
 
-- Aprobación de Jean sobre la maqueta antes de portar a nativo.
+- Maqueta aprobada por Jean al 100 % el 2026-11-04; portada a nativo en 0.5.0.
 - Cuchilla y calibración: revisar en tablet con luz real del taller.

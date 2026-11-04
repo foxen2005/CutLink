@@ -95,6 +95,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         canvas.listener = this
 
         canvas.onScale = { v<ScaleBar>(R.id.scaleBar).update(it) }
+        // barra inferior: iconos de 20 dp, como los de zoom
+        for (id in listOf(R.id.bMulti, R.id.bAll)) v<Button>(id).apply {
+            val icon = compoundDrawablesRelative[0].apply { setBounds(0, 0, dp(20f).toInt(), dp(20f).toInt()) }
+            setCompoundDrawablesRelative(icon, null, null, null)
+        }
+        for (id in listOf(R.id.fx, R.id.fy, R.id.fw, R.id.fh, R.id.pInset, R.id.pInsetB, R.id.pThick, R.id.pSearchX,
+            R.id.pSearchY, R.id.pCalX, R.id.pCalY, R.id.offset)) v<EditText>(id).commaDecimal()
 
         v<Button>(R.id.btnOpen).onTapOnce { pickFile() }
         v<Button>(R.id.btnOpen2).onTapOnce { pickFile() }
@@ -143,7 +150,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val prefs = m.prefs
         val pncFields = mapOf(R.id.pInset to "p_inset", R.id.pThick to "p_thick", R.id.pSearchX to "p_sx",
             R.id.pSearchY to "p_sy", R.id.pCalX to "p_cx", R.id.pCalY to "p_cy")
-        for ((id, key) in pncFields) prefs.getString(key, null)?.let { v<EditText>(id).setText(it) }
+        for ((id, key) in pncFields) prefs.getString(key, null)?.let { v<EditText>(id).setText(it.replace('.', ',')) }
         v<Switch>(R.id.swPnc).isChecked = prefs.getBoolean("p_on", false)
         v<Switch>(R.id.swPnc).setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("p_on", on).apply(); refreshPanel() }
         v<RadioGroup>(R.id.pncMode).setOnCheckedChangeListener { _, _ -> refreshPanel() }
@@ -190,9 +197,11 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         handleIntent(intent)
     }
 
-    override fun onResume() { super.onResume(); m.resultOnScreen = true; m.listen(this); m.autoConnect() }
+    override fun onResume() { super.onResume(); m.resultOnScreen = true; m.toaster = { pill(it) }; m.listen(this); m.autoConnect() }
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); veil(!hasFocus) }
     override fun onPause() {
         m.resultOnScreen = false
+        m.toaster = null
         m.unlisten(this)
         // guardado automático: si la app se cierra, en Abrir queda «Seguir con lo último»
         if (doc?.items?.isNotEmpty() == true) saveProject(AUTOSAVE, quiet = true)
@@ -322,11 +331,14 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
     private fun askSave() {
         val d = doc ?: return
-        val pad = dp(16f).toInt()
-        val name = EditText(this).apply { hint = "Nombre del proyecto"; setText(d.name.substringBeforeLast('.')); setSelectAllOnFocus(true); singleLine() }
+        val pad = dp(24f).toInt()
+        val name = EditText(this, null, 0, R.style.Num).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            hint = "Nombre del proyecto"; setText(d.name.substringBeforeLast('.')); singleLine()
+        }
         AlertDialog.Builder(this)
             .setTitle("Guardar proyecto")
-            .setView(LinearLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(name, LinearLayout.LayoutParams(-1, -2)) })
+            .setView(LinearLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(name, LinearLayout.LayoutParams(-1, dp(48f).toInt())) })
             .setPositiveButton("Guardar") { _, _ ->
                 val n = name.text.toString().trim().ifEmpty { "Proyecto" }
                 if (File(projectsDir(), projectDirName(n)).exists()) {
@@ -532,7 +544,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
     // ------------------------------------------------------------------ soporte (siempre al abrir)
     private fun askSupport(d: Doc, keepCurrent: Boolean) {
-        val pad = dp(22f).toInt()
+        val pad = dp(24f).toInt()
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, dp(10f).toInt(), pad, dp(10f).toInt()) }
         val customIdx = Support.PRESETS.size
         val tiles = LinearLayout(this)
@@ -552,7 +564,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
         val cur = support
         var picked = if (keepCurrent && cur != null) Support.PRESETS.indexOfFirst { it.id == cur.id }.let { if (it < 0) customIdx else it } else 0
-        if (keepCurrent && cur != null && cur.id == "custom") { cw.setText(cur.w.toString()); ch.setText(cur.h.toString()) }
+        if (keepCurrent && cur != null && cur.id == "custom") { cw.setText(nf(cur.w)); ch.setText(nf(cur.h)) }
         onMat.isChecked = keepCurrent && cur?.onMat == true
 
         fun current(): Support? {
@@ -647,13 +659,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     /** Campo con su etiqueta encima. */
     private fun numField(label: String, value: String): Pair<LinearLayout, EditText> {
         val e = EditText(this, null, 0, R.style.Num).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            commaDecimal()
             setText(value)
         }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(TextView(context, null, 0, R.style.FieldLabel).apply { text = label })
-            addView(e, LinearLayout.LayoutParams(-1, dp(44f).toInt()))
+            addView(e, LinearLayout.LayoutParams(-1, dp(48f).toInt()))
         }
         return box to e
     }
@@ -663,8 +675,16 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         t.setTextColor(getColor(if (bad) R.color.mag_ink else R.color.ink))
     }
 
-    /** Ancho del diálogo en dp (más lo que ocupa el margen del fondo). */
-    private fun AlertDialog.widen(widthDp: Int) = window?.setLayout(dp(widthDp + 32f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+    /** Ancho del diálogo en dp (más lo que ocupa el margen del fondo) y subtítulo chico, en tinta secundaria. */
+    private fun AlertDialog.widen(widthDp: Int) {
+        window?.setLayout(dp(widthDp + 32f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+        findViewById<TextView>(android.R.id.message)?.apply {
+            textSize = 14f
+            setTextColor(getColor(R.color.ink_2))
+            typeface = resources.getFont(R.font.barlow_medium)
+            setPadding(paddingLeft, 0, paddingRight, 0)
+        }
+    }
 
     private fun showDoc(d: Doc, s: Support) {
         if (d !== doc) openedFrom = null
@@ -733,7 +753,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             val b = d.selBBox()
             for ((id, value) in listOf(R.id.fx to b[0], R.id.fy to b[1], R.id.fw to b[2] - b[0], R.id.fh to b[3] - b[1])) {
                 val e = v<EditText>(id)
-                if (!e.hasFocus()) { val t = nf(value).replace(',', '.'); e.setText(t); shown[id] = t }
+                if (!e.hasFocus()) { val t = nf(value); e.setText(t); shown[id] = t }
             }
         }
 
@@ -770,7 +790,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<TextView>(R.id.pncWarn).apply { text = pncProblems.joinToString("\n"); visibility = if (pncProblems.isEmpty()) View.GONE else View.VISIBLE }
         // imprimir sirve con o sin marcas (diseño de fondo + corte encima); con Print & Cut agrega las marcas
         v<View>(R.id.btnPrint).visibility = View.VISIBLE
-        v<Button>(R.id.btnPrint).isEnabled = !s.mat && !cutting && !(pnc && pncBlocks) && d.items.any { it.isImage }
+        // sigue activo sobre el mat o sin imágenes: al tocarlo explica por qué no se puede
+        v<Button>(R.id.btnPrint).isEnabled = !cutting && !(pnc && pncBlocks)
         v<Button>(R.id.bSearch).isEnabled = pnc && !pncBlocks && !cutting
 
         // documento
@@ -956,7 +977,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     private fun askFill() {
         val d = doc ?: return
         if (d.sel.isEmpty()) return
-        val pad = dp(22f).toInt()
+        val pad = dp(24f).toInt()
         val area = workArea()
         val (gapBox, gap) = numField("Separación (mm)", m.prefs.getString("fill_gap", "3") ?: "3")
         val info = TextView(this).apply {
@@ -1061,7 +1082,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<EditText>(R.id.pressure).setText(mat.getInt("pressure").toString())
         v<EditText>(R.id.passes).setText(mat.optInt("passes", 1).toString())
         v<TextView>(R.id.bladeName).text = b.getString("name") + if (b.optInt("tool", 1) == 2) " · carro 2" else ""
-        v<EditText>(R.id.offset).setText(b.getDouble("offset_mm").toString())
+        v<EditText>(R.id.offset).setText(nf(b.getDouble("offset_mm"), 2))
         refreshOffsetNote()
         refreshPrimary()
     }
@@ -1157,7 +1178,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     /** Lo irreversible se confirma con datos: rótulo chico y valor grande, de a dos por fila. */
     private fun readSheet(rows: List<Pair<String, String>>): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(22f).toInt(), dp(8f).toInt(), dp(22f).toInt(), dp(4f).toInt())
+        setPadding(dp(24f).toInt(), dp(8f).toInt(), dp(24f).toInt(), dp(4f).toInt())
         for (pair in rows.chunked(2)) addView(LinearLayout(context).apply {
             for ((k, value) in pair) addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1316,7 +1337,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         printedSignature = if (r != null) sig else null
         m.onLog("Hoja para imprimir: ${nf(sup.w)} × ${nf(sup.h)} mm" +
             (r?.let { ", con marcas (inset ${nf(it.inset)}/${nf(it.bottom)})" } ?: ", sin marcas"))
-        toast("Imprime al 100 % (tamaño real), sin ajustar a la página")
+        // sale sobre la pantalla de impresión del sistema: acá sí va el Toast de Android
+        Toast.makeText(this, "Imprime al 100 % (tamaño real), sin ajustar a la página", Toast.LENGTH_LONG).show()
     }
 
     /** Solo busca las marcas, sin cortar (como «Probar búsqueda» del panel). */
@@ -1335,7 +1357,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             m.toast(if (ok) "Marcas encontradas" else "No encontró las marcas (respuesta ${resp ?: "ninguna"})")
         }
     }
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun toast(msg: String) = pill(msg)
 
     companion object {
         private const val REQ_OPEN = 10

@@ -214,7 +214,7 @@
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="bottom">
                         <LinearLayout style="@style/FieldBox"><TextView style="@style/FieldLabel" android:text="Velocidad" /><EditText android:id="@+id/speed" style="@style/Num" android:inputType="number" android:text="10" /></LinearLayout>
                         <LinearLayout style="@style/FieldBox"><TextView style="@style/FieldLabel" android:text="Presión" /><EditText android:id="@+id/pressure" style="@style/Num" android:inputType="number" android:text="10" /></LinearLayout>
-                        <Spinner android:id="@+id/mat" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1.4" android:background="@drawable/bg_spinner" android:popupBackground="@drawable/bg_summary" />
+                        <Spinner android:id="@+id/mat" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1.4" android:background="@drawable/bg_spinner" android:popupBackground="@drawable/bg_summary" />
                     </LinearLayout>
 
                     <Button android:id="@+id/btnCut" style="@style/Primary" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="8dp" android:text="Cortar cuadrado" />
