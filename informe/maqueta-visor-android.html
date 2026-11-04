@@ -528,7 +528,7 @@ function render() {
 
   // página del archivo (si no coincide con el soporte)
   const [pw, ph] = d.page;
-  if (Math.abs(pw - sup.w) > 0.5 || Math.abs(ph - sup.h) > 0.5) {
+  if (d.kind !== "nuevo" && !st.pnc && (Math.abs(pw - sup.w) > 0.5 || Math.abs(ph - sup.h) > 0.5)) {
     ctx.setLineDash([px(6), px(4)]); ctx.strokeStyle = onPaper ? "#8a877f" : "#7d8a8f"; ctx.lineWidth = px(1);
     ctx.strokeRect(0, 0, pw, ph); ctx.setLineDash([]);
   }
@@ -990,7 +990,7 @@ $("onMat").onclick = () => { st.onMat = !st.onMat; renderOpts(); };
 $("supCancel").onclick = () => $("supScrim").classList.remove("show");
 $("supOk").onclick = () => {
   const s = SUPPORTS.find(s => s.id === st.supSel), { w, h } = supportDims();
-  st.support = { id: s.id, name: s.id === "custom" ? `Personalizado ${nf(w)} × ${nf(h)}` : s.name, w, h, mat: !!s.mat, onMat: !s.mat && st.onMat };
+  st.support = { id: s.id, name: s.name, w, h, mat: !!s.mat, onMat: !s.mat && st.onMat };
   const fresh = st.fresh;   // cambiar solo el soporte (chip) no borra lo editado
   st.doc = st.pending; st.cut = null; st.pos = [0, 0];
   if (fresh) buildItems(st.doc);

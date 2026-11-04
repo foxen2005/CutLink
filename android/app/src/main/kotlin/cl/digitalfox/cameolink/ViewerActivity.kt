@@ -456,7 +456,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             else {
                 val w = cw.text.toString().replace(',', '.').toDoubleOrNull() ?: return null
                 val h = ch.text.toString().replace(',', '.').toDoubleOrNull() ?: return null
-                Support("custom", "Personalizado ${nf(w)} × ${nf(h)}", w, h, mat = false, onMat = onMat.isChecked)
+                Support("custom", "Personalizado", w, h, mat = false, onMat = onMat.isChecked)
             }
         }
         var dialog: AlertDialog? = null

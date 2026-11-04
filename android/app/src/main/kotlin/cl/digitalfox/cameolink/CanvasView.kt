@@ -135,7 +135,8 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         }
 
         // página del archivo si no coincide con el soporte
-        if (d.kind != "nuevo" && (abs(d.pageW - sup.w) > 0.5 || abs(d.pageH - sup.h) > 0.5)) {
+        // (con marcas no: el punteado es el área de trabajo y dos rectángulos confunden)
+        if (d.kind != "nuevo" && regmarks == null && (abs(d.pageW - sup.w) > 0.5 || abs(d.pageH - sup.h) > 0.5)) {
             stroke.color = if (onPaper) 0xFF8A877F.toInt() else 0xFF7D8A8F.toInt()
             stroke.strokeWidth = 1f; stroke.pathEffect = dash
             c.drawRect(sx(0.0), sy(0.0), sx(d.pageW), sy(d.pageH), stroke)
