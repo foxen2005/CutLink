@@ -108,6 +108,8 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
 
     fun keyOf(it: Item) = it.g?.let { "g$it" } ?: "i${it.id}"
     fun selItems() = items.filter { keyOf(it) in sel }
+    /** Todo lo seleccionado son grupos (las copias de Rellenar, por ejemplo): Agrupar pasa a ser Desagrupar. */
+    val allGrouped get() = sel.isNotEmpty() && sel.all { it.startsWith("g") }
     val canUndo get() = undoStack.isNotEmpty()
     val canRedo get() = redoStack.isNotEmpty()
 
@@ -139,7 +141,7 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
     fun duplicate() {
         val gm = HashMap<Int, Int>()
         val copies = selItems().map { it.copyWith(nextId++, A.mul(A.tr(5.0, 5.0), it.t), it.g?.let { g -> gm.getOrPut(g) { nextGroup++ } }) }
-        items.addAll(copies); sel.clear(); copies.forEach { sel += keyOf(it) }
+        copies.forEach { place(it) }; sel.clear(); copies.forEach { sel += keyOf(it) }
     }
     fun delete() { items.removeAll { keyOf(it) in sel }; sel.clear() }
     fun selectAll() { sel.clear(); items.forEach { sel += keyOf(it) } }
@@ -151,31 +153,40 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
 
     // ---- agregar (las formas son LÍNEAS DE CORTE: no recortan la imagen, que se imprime completa
     // y deja sangrado natural si el corte se corre)
-    private fun add(it: Item) { items += it; sel.clear(); sel += keyOf(it) }
+    private fun add(it: Item, at: Int = items.size) { items.add(at, it); sel.clear(); sel += keyOf(it) }
+
+    /** Una imagen nueva entra sobre las otras imágenes y bajo las líneas: tapar una línea es decisión de Bajar. */
+    private fun place(it: Item) { if (it.isImage) items.add(items.indexOfLast { i -> i.isImage } + 1, it) else items += it }
 
     fun addShape(kind: String, cx: Double, cy: Double, w: Double, h: Double, radius: Double = 6.0) =
         add(Item(nextId++, false, Shapes.points(kind, cx, cy, w, h, radius), true, null, null))
 
-    /** Imagen de [wMm] de ancho centrada en (cx, cy), debajo de las líneas de corte. */
+    /** Imagen de [wMm] de ancho centrada en (cx, cy): sobre las otras imágenes, bajo las líneas de corte. */
     fun addImage(bmp: Bitmap, path: String?, cx: Double, cy: Double, wMm: Double) {
         val hMm = wMm * bmp.height / bmp.width
-        add(Item(nextId++, true, DoubleArray(0), true, doubleArrayOf(wMm / 2, 0.0, 0.0, hMm / 2, cx, cy), bmp, imagePath = path))
+        add(Item(nextId++, true, DoubleArray(0), true, doubleArrayOf(wMm / 2, 0.0, 0.0, hMm / 2, cx, cy), bmp, imagePath = path),
+            items.indexOfLast { it.isImage } + 1)
     }
 
-    // ---- capas: solo importan entre imágenes; las líneas de corte siempre se ven encima y el orden
-    // de corte lo decide Ordering
-    fun moveLayer(dir: Int) {
-        val slots = items.indices.filter { items[it].isImage }
-        val imgs = slots.map { items[it] }.toMutableList()
-        val picked = selItems().filter { it.isImage }.toSet()
-        val order = if (dir > 0) imgs.indices.reversed() else imgs.indices
-        for (i in order) {
-            val j = i + dir
-            if (j in imgs.indices && imgs[i] in picked && imgs[j] !in picked) { val t = imgs[i]; imgs[i] = imgs[j]; imgs[j] = t }
-        }
-        slots.forEachIndexed { k, s -> items[s] = imgs[k] }
+    // ---- capas: imágenes y líneas en una sola pila (la lista). Solo cambia lo que se ve y lo que se
+    // toca: las líneas se cortan igual, y el orden de corte lo decide Ordering
+    /** Pasa la selección sobre (o bajo) el siguiente elemento que se le cruza. false = ya no hay más. */
+    fun moveLayer(dir: Int): Boolean {
+        val picked = selItems()
+        if (picked.isEmpty()) return false
+        val set = picked.toHashSet()
+        val b = bboxAll(picked)
+        fun crosses(it: Item) = it.bbox().let { q -> q[0] < b[2] && q[2] > b[0] && q[1] < b[3] && q[3] > b[1] }
+        val edge = picked.map { items.indexOf(it) }.let { if (dir > 0) it.max() else it.min() }
+        var k = edge + dir
+        while (k in items.indices && (items[k] in set || !crosses(items[k]))) k += dir
+        if (k !in items.indices) return false
+        val anchor = items[k]
+        val rest = items.filterNot { it in set }.toMutableList()
+        rest.addAll(rest.indexOf(anchor) + if (dir > 0) 1 else 0, picked)
+        items = rest
+        return true
     }
-    val selHasImage get() = selItems().any { it.isImage }
 
     // ---- rellenar: la selección es una unidad y se repite en grilla dentro del área de trabajo
     class Fill(val cols: Int, val rows: Int, val w: Double, val h: Double) { val count get() = cols * rows }
@@ -202,7 +213,7 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
             val gid = nextGroup++                                  // cada copia se mueve junta
             base.forEachIndexed { k, it ->
                 val t = A.mul(mv, orig[k])
-                if (r == 0 && c == 0) { it.t = t; it.g = gid } else items += it.copyWith(nextId++, t, gid)
+                if (r == 0 && c == 0) { it.t = t; it.g = gid } else place(it.copyWith(nextId++, t, gid))
             }
             keys += "g$gid"
         }
@@ -212,27 +223,18 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
     fun flipH() { val b = selBBox(); apply(A.sc(-1.0, 1.0, (b[0] + b[2]) / 2, 0.0)) }
     fun flipV() { val b = selBBox(); apply(A.sc(1.0, -1.0, 0.0, (b[1] + b[3]) / 2)) }
 
-    /** Lo que está bajo el dedo: la línea de corte más chica (así se elige un agujero dentro de su
-     *  contorno), y si no hay líneas, la imagen de más arriba: lo que se ve es lo que se toca. */
+    /** Lo que está bajo el dedo, de arriba hacia abajo: la línea se toca en su trazo y la imagen en toda
+     *  su superficie. Sin nada de eso, el interior de la forma cerrada más chica (así se elige un
+     *  agujero dentro de su contorno). */
     fun hit(x: Double, y: Double, tolMm: Double): Item? {
-        var best: Item? = null
-        var bestA = Double.MAX_VALUE
-        var topImage: Item? = null
-        for (it in items) {
+        for (it in items.asReversed()) {
             val p = it.world()
-            var h = (it.closed || it.isImage) && pointInPoly(x, y, p)
-            if (!h) {
-                var i = 2
-                while (i < p.size && !h) { h = segDist(x, y, p[i - 2], p[i - 1], p[i], p[i + 1]) < tolMm; i += 2 }
-                if (!h && it.isImage) h = segDist(x, y, p[6], p[7], p[0], p[1]) < tolMm
-            }
-            if (!h) continue
-            if (it.isImage) { topImage = it; continue }        // las de más arriba van después en la lista
-            val b = it.bbox()
-            val area = (b[2] - b[0]) * (b[3] - b[1])
-            if (area <= bestA) { bestA = area; best = it }
+            if (it.isImage) { if (pointInPoly(x, y, p)) return it; continue }
+            var i = 2
+            while (i < p.size) { if (segDist(x, y, p[i - 2], p[i - 1], p[i], p[i + 1]) < tolMm) return it; i += 2 }
         }
-        return best ?: topImage
+        return items.filter { !it.isImage && it.closed && pointInPoly(x, y, it.world()) }
+            .minByOrNull { it.bbox().let { b -> (b[2] - b[0]) * (b[3] - b[1]) } }
     }
 
     /** Formas a cortar en orden de corte (interiores primero, recalculado con lo editado). */

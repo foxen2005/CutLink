@@ -65,6 +65,13 @@ object Machine : LinkListener {
     }
 
     val connected get() = session.link != null
+    /** Hay un enlace abierto que todavía no termina de conectar. */
+    val connecting get() = session.link == null && (spp != null || ble != null)
+    /** Con el visor en pantalla el resultado queda fijo en su franja: el toast sobra. */
+    var resultOnScreen = false
+    /** La máquina está leyendo las marcas de Print & Cut. */
+    @Volatile var searchingMarks = false
+        private set
 
     val prefs get() = app.getSharedPreferences("cameolink", Context.MODE_PRIVATE)
     private var autoTried = false
@@ -75,14 +82,21 @@ object Machine : LinkListener {
      * a la dirección guardada, que es la clásica que ya funcionó.
      */
     fun autoConnect() {
-        if (autoTried || connected || spp != null || ble != null) return
+        if (autoTried) return
         autoTried = true
-        val addr = prefs.getString("last_device", null) ?: return
-        if (!adapter.isEnabled) return
+        reconnect()
+    }
+
+    /** Conecta a la última Cameo sin buscar. false = no hay a cuál (hay que ir a Máquina y buscar). */
+    fun reconnect(): Boolean {
+        if (connected || connecting) return true
+        val addr = prefs.getString("last_device", null) ?: return false
+        if (!adapter.isEnabled) return false
         if (android.os.Build.VERSION.SDK_INT >= 31 &&
-            app.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+            app.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) return false
         onLog("Reconectando a la última Cameo ($addr)…")
         connectSppAny(listOf(adapter.getRemoteDevice(addr)))
+        return true
     }
 
     // Tiempo: se aprende de los cortes reales (mm de corte por segundo a cada velocidad). No se
@@ -304,6 +318,12 @@ object Machine : LinkListener {
         private set
     @Volatile var lastResult: String? = null       // null = terminó bien (o nunca hubo corte)
         private set
+    /** La máquina recibió todo el trabajo y lo terminó, aunque se haya pedido Detener. */
+    @Volatile var lastCompleted = false
+        private set
+    /** Ya salió algún comando de corte: la cuchilla pudo tocar el material. */
+    @Volatile var plotStarted = false
+        private set
     private var abortFlag = AtomicBoolean(false)
 
     fun abortCut() { if (cutting) { abortFlag.set(true); progress = Progress(progress?.fraction ?: 0.0, "Deteniendo…"); changed() } }
@@ -353,15 +373,18 @@ object Machine : LinkListener {
         cutting = true
         abortFlag = AtomicBoolean(false)
         lastResult = null
+        lastCompleted = false
+        plotStarted = false
         progress = Progress(0.0, "Inicializando")
         changed()
         fun report(f: Double, t: String) { progress = Progress(f, t); changed() }
-        fun finish(err: String?) {
+        fun finish(err: String?, completed: Boolean = err == null) {
             cutting = false
             lastResult = err
+            lastCompleted = completed
             progress = null
             changed()
-            toast(err ?: "Corte terminado")
+            if (!resultOnScreen) toast(err ?: "Corte terminado")
         }
         worker.execute {
             try {
@@ -382,12 +405,15 @@ object Machine : LinkListener {
                 session.sendCommands(Gpgl.setupCommands(s))
                 var offset = 0.0 to 0.0
                 if (preCut != null) {
+                    searchingMarks = true
                     report(0.02, "Buscando marcas de registro…")
-                    offset = preCut()
+                    try { offset = preCut() } finally { searchingMarks = false }
+                    report(0.04, "Marcas encontradas")
                 }
                 val cutStart = System.currentTimeMillis()     // después de las marcas: se mide solo el corte
                 val cmds = Gpgl.plotCommands(paths, Gpgl.bboxOf(paths), s.passes, offset)
                 val total = cmds.size
+                plotStarted = true
                 for (i in cmds.indices step 64) {
                     if (abortFlag.get()) {
                         session.sendCommands(listOf("SO0", "FN0"))     // cuchilla arriba y al origen
@@ -425,7 +451,7 @@ object Machine : LinkListener {
                     }
                     if (System.currentTimeMillis() - t0 > 30 * 60_000) { finish("El corte no terminó en 30 min"); return@execute }
                 }
-                if (warned) { setMachine("lista"); finish("La Cameo terminó lo que ya había recibido"); return@execute }
+                if (warned) { setMachine("lista"); finish("La Cameo terminó lo que ya había recibido", completed = true); return@execute }
                 setMachine("lista")
                 onLog("Corte terminado: ${paths.size} trazados")
                 val mm = paths.sumOf { p -> p.zipWithNext().sumOf { (a, b) -> Math.hypot(b.first - a.first, b.second - a.second) } } * s.passes

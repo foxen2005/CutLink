@@ -11,8 +11,8 @@ android {
         applicationId = "cl.digitalfox.cameolink"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         // La Pad 8 Pro y los teléfonos actuales son arm64; x86_64 solo para el emulador
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }

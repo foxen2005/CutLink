@@ -4,21 +4,29 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.InputType
+import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
+import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.RadioButton
@@ -33,7 +41,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Pantalla principal (según informe/maqueta-visor-android.html): abrir SVG/DXF/studio3 (también
+ * Pantalla principal (según informe/maqueta-nuevo-estilo.html): abrir SVG/DXF/studio3 (también
  * con "Abrir con…" / compartir), elegir soporte SIEMPRE al abrir, ver y editar, material y cuchilla
  * del material, y cortar con progreso y Detener. La conexión vive en [Machine].
  */
@@ -56,8 +64,27 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     // Print & Cut: posiciones al imprimir; si cambian, la hoja impresa ya no calza
     private var printedSignature: String? = null
     private var openedFrom: File? = null      // carpeta del proyecto abierto, si vino de uno
+    private var panelOpen = true
+    // corte: para saber cuándo terminó y dejar el resultado fijo en pantalla
+    private var wasCutting = false
+    private var wasSearching = false
+    private var preparingCut = false          // calculando el orden de corte: el botón sigue apagado
+    private var lastTap = 0L
+    private var cutStartedAt = 0L
+    private var resultVisible = false
+    // lo que refreshPanel calcula y el botón principal necesita en cada aviso de la máquina
+    private var cutTotal = 0
+    private var cutOutside = 0
+    private var pncBlocked = false
+    private var printIsPrimary: Boolean? = null
 
     private fun <T : View> v(id: Int): T = findViewById(id)
+
+    /** Para lo que abre una ventana: dos toques seguidos alcanzan a abrir dos, una encima de la otra. */
+    private fun View.onTapOnce(block: () -> Unit) = setOnClickListener {
+        val now = SystemClock.uptimeMillis()
+        if (hasWindowFocus() && now - lastTap > 600) { lastTap = now; block() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,33 +94,34 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         canvas = v(R.id.canvas)
         canvas.listener = this
 
-        v<Button>(R.id.btnOpen).setOnClickListener { pickFile() }
-        v<Button>(R.id.btnOpen2).setOnClickListener { pickFile() }
-        v<Button>(R.id.btnBlank).setOnClickListener { newBlank() }
-        v<Button>(R.id.btnAdd).setOnClickListener { showAddMenu() }
-        v<Button>(R.id.btnSave).setOnClickListener { askSave() }
-        v<Button>(R.id.bPanel).setOnClickListener { togglePanel() }
-        v<Button>(R.id.bFill).setOnClickListener { askFill() }
-        v<Button>(R.id.bLayerUp).setOnClickListener { edit { it.moveLayer(1) } }
-        v<Button>(R.id.bLayerDown).setOnClickListener { edit { it.moveLayer(-1) } }
-        v<Button>(R.id.connPill).setOnClickListener { startActivity(Intent(this, MainActivity::class.java)) }
-        v<Button>(R.id.supportChip).setOnClickListener { doc?.let { askSupport(it, keepCurrent = true) } }
-        v<Button>(R.id.btnTools).setOnClickListener { showTools = !showTools; refreshPanel() }
+        canvas.onScale = { v<ScaleBar>(R.id.scaleBar).update(it) }
 
-        v<Button>(R.id.bZoomIn).setOnClickListener { canvas.zoomBy(1.3f) }
-        v<Button>(R.id.bZoomOut).setOnClickListener { canvas.zoomBy(1 / 1.3f) }
-        v<Button>(R.id.bFit).setOnClickListener { canvas.fit() }
+        v<Button>(R.id.btnOpen).onTapOnce { pickFile() }
+        v<Button>(R.id.btnOpen2).onTapOnce { pickFile() }
+        v<Button>(R.id.btnBlank).onTapOnce { newBlank() }
+        v<Button>(R.id.btnAdd).onTapOnce { showAddMenu() }
+        v<Button>(R.id.btnSave).onTapOnce { askSave() }
+        v<View>(R.id.bPanel).setOnClickListener { togglePanel() }
+        v<Button>(R.id.bFill).onTapOnce { askFill() }
+        v<Button>(R.id.bLayerUp).setOnClickListener { moveLayer(1) }
+        v<Button>(R.id.bLayerDown).setOnClickListener { moveLayer(-1) }
+        v<View>(R.id.connPill).onTapOnce { startActivity(Intent(this, MainActivity::class.java)) }
+        v<Button>(R.id.supportChip).onTapOnce { doc?.let { askSupport(it, keepCurrent = true) } }
+        v<View>(R.id.btnTools).setOnClickListener { showTools = !showTools; refreshPanel() }
+
+        v<View>(R.id.bZoomIn).setOnClickListener { canvas.zoomBy(1.3f) }
+        v<View>(R.id.bZoomOut).setOnClickListener { canvas.zoomBy(1 / 1.3f) }
+        v<View>(R.id.bFit).setOnClickListener { canvas.fit() }
         v<Button>(R.id.bMulti).setOnClickListener {
             canvas.multi = !canvas.multi
             toast(if (canvas.multi) "Selección múltiple: toca formas o arrastra un recuadro" else "Selección simple")
             refreshPanel()
         }
         v<Button>(R.id.bAll).setOnClickListener { doc?.let { it.selectAll(); onSelectionChanged() } }
-        v<Button>(R.id.bUndo).setOnClickListener { doc?.let { it.undo(); onEdited() } }
-        v<Button>(R.id.bRedo).setOnClickListener { doc?.let { it.redo(); onEdited() } }
+        v<View>(R.id.bUndo).setOnClickListener { doc?.let { it.undo(); onEdited() } }
+        v<View>(R.id.bRedo).setOnClickListener { doc?.let { it.redo(); onEdited() } }
 
-        v<Button>(R.id.bGroup).setOnClickListener { edit { it.group() } }
-        v<Button>(R.id.bUngroup).setOnClickListener { edit { it.ungroup() } }
+        v<Button>(R.id.bGroup).setOnClickListener { edit { if (it.allGrouped) it.ungroup() else it.group() } }
         v<Button>(R.id.bDup).setOnClickListener { edit { it.duplicate() } }
         v<Button>(R.id.bRot).setOnClickListener { edit { it.rotate90() } }
         v<Button>(R.id.bFlipH).setOnClickListener { edit { it.flipH() } }
@@ -131,6 +159,12 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             v<EditText>(id).addTextChangedListener(pncWatcher)
         v<Button>(R.id.btnPrint).setOnClickListener { printSheet() }
         v<Button>(R.id.bSearch).setOnClickListener { testSearch() }
+        fun showCalib(open: Boolean) {
+            v<View>(R.id.calibBox).visibility = if (open) View.VISIBLE else View.GONE
+            v<Button>(R.id.calibToggle).setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0,
+                if (open) R.drawable.ic_expand_less else R.drawable.ic_expand_more, 0)
+        }
+        v<Button>(R.id.calibToggle).setOnClickListener { showCalib(v<View>(R.id.calibBox).visibility != View.VISIBLE) }
 
         v<Spinner>(R.id.material).onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, view: View?, pos: Int, id: Long) = applyMaterial(pos)
@@ -142,8 +176,10 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
 
-        v<Button>(R.id.bCut).setOnClickListener { confirmCut() }
+        v<Button>(R.id.bCut).onTapOnce { primaryAction() }
         v<Button>(R.id.bStop).setOnClickListener { m.abortCut() }
+        v<Button>(R.id.resClose).setOnClickListener { hideResult() }
+        v<Button>(R.id.resAgain).onTapOnce { hideResult(); confirmCut() }
 
         loadPresets()
         handleIntent(intent)
@@ -154,8 +190,9 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         handleIntent(intent)
     }
 
-    override fun onResume() { super.onResume(); m.listen(this); m.autoConnect() }
+    override fun onResume() { super.onResume(); m.resultOnScreen = true; m.listen(this); m.autoConnect() }
     override fun onPause() {
+        m.resultOnScreen = false
         m.unlisten(this)
         // guardado automático: si la app se cierra, en Abrir queda «Seguir con lo último»
         if (doc?.items?.isNotEmpty() == true) saveProject(AUTOSAVE, quiet = true)
@@ -163,10 +200,27 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     }
 
     override fun onMachineChanged() {
-        val pill = v<Button>(R.id.connPill)
-        pill.text = if (m.connected) "● ${m.session.link?.label?.substringAfter(' ') ?: "Cameo"} · ${m.machineText}"
-        else "● Sin conexión"
-        pill.setTextColor(if (m.connected) 0xFF3CCF91.toInt() else 0xFFFF9FD0.toInt())
+        val reg = when {
+            m.searchingMarks || m.connecting -> Register.BUSY
+            m.connected && m.machineText != "sin material" && !m.machineText.startsWith("sin respuesta") -> Register.READY
+            else -> Register.OFF
+        }
+        for (id in listOf(R.id.wordmark, R.id.connMark, R.id.emptyMark)) v<PlateView>(id).state = reg
+        v<View>(R.id.connPill).isActivated = reg == Register.OFF
+        v<TextView>(R.id.connText).apply {
+            text = when {
+                m.searchingMarks -> "Buscando marcas…"
+                m.connecting -> "Conectando…"
+                m.connected -> cameoName() + if (m.machineText == "—") "" else " · ${m.machineText}"
+                else -> "Sin conexión"
+            }
+            setTextColor(getColor(if (reg == Register.OFF) R.color.mag_ink else R.color.ink))
+        }
+        // las planchas de las líneas: se separan al buscar las marcas y cierran el registro al hallarlas
+        if (m.searchingMarks != wasSearching) {
+            wasSearching = m.searchingMarks
+            if (wasSearching) canvas.separatePlates() else if (m.cutting) canvas.closeRegister() else canvas.resetPlates()
+        }
 
         // corte: el estado vive en Machine (sobrevive si esta pantalla se cerró y se volvió a abrir)
         val p = m.progress
@@ -185,11 +239,60 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 canvas.cutAt = idx to ((inPass - acc) / cutSizes[idx]).coerceIn(0.0, 1.0)
             }
         } else if (box.visibility == View.VISIBLE || canvas.cutOrder != null) {
+            if (wasCutting) showResult()
             box.visibility = View.GONE
             canvas.cutOrder = null
             cutSizes = emptyList()
             refreshPanel()
         }
+        wasCutting = m.cutting
+        refreshPrimary()
+    }
+
+    private fun cameoName() = m.session.link?.label?.substringAfter(' ')?.substringBefore('-')?.trim()?.ifEmpty { null } ?: "Cameo"
+
+    private fun plural(n: Int) = "$n ${if (n == 1) "trazado" else "trazados"}"
+
+    private fun duration(sec: Long) = if (sec < 60) "$sec s" else "${sec / 60} min ${"%02d".format(sec % 60)} s"
+
+    /** El resultado queda fijo hasta cerrarlo: un toast se pierde si uno está mirando la máquina. */
+    private fun showResult() {
+        val err = m.lastResult
+        // corte lanzado desde Máquina (cuadrado de prueba): acá no hay franja que mostrar
+        val n = canvas.cutOrder?.size ?: run { toast(err ?: "Corte terminado"); return }
+        val ok = m.lastCompleted                // incluye Detener tarde: la Cameo terminó todo igual
+        val at = minOf(canvas.cutAt.first + 1, n)
+        val elapsed = if (cutStartedAt > 0) " · " + duration((System.currentTimeMillis() - cutStartedAt) / 1000) else ""
+        v<TextView>(R.id.resText).apply {
+            text = when {
+                ok -> plural(n) + elapsed
+                !m.plotStarted -> "No se empezó a cortar"
+                err?.startsWith("Detenido") == true -> "Detenido en el trazado $at de $n"
+                else -> "Se interrumpió en el trazado $at de $n"
+            }
+            setTextColor(getColor(if (ok) R.color.ink else R.color.mag_ink))
+        }
+        v<TextView>(R.id.resSub).apply {
+            text = err ?: materials.getOrNull(v<Spinner>(R.id.material).selectedItemPosition)?.getString("name") ?: ""
+            setTextColor(getColor(if (ok) R.color.ink_2 else R.color.mag_ink))
+        }
+        v<ImageView>(R.id.resMark).apply {
+            setBackgroundResource(if (ok) R.drawable.bg_round_ok else R.drawable.bg_round_fail)
+            setImageResource(if (ok) R.drawable.ic_check else R.drawable.ic_close)
+            imageTintList = if (ok) null else ColorStateList.valueOf(0xFFFFFFFF.toInt())
+        }
+        v<Button>(R.id.resAgain).text = if (ok) "Repetir" else "Reintentar"
+        v<View>(R.id.resultBox).apply {
+            setBackgroundResource(if (ok) R.drawable.bg_strip else R.drawable.bg_strip_fail)
+            visibility = View.VISIBLE
+        }
+        resultVisible = true
+    }
+
+    private fun hideResult() {
+        v<View>(R.id.resultBox).visibility = View.GONE
+        resultVisible = false
+        refreshPanel()
     }
 
     // ------------------------------------------------------------------ abrir
@@ -200,8 +303,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             "Hoja en blanco" to { newBlank() },
         )
         val last = File(projectsDir(), AUTOSAVE)
-        if (doc == null && File(last, "proyecto.json").exists()) entries += "↩ Seguir con lo último" to { openProject(last) }
-        if (savedProjects().isNotEmpty()) entries += "📁 Proyectos guardados…" to { showProjects() }
+        if (doc == null && File(last, "proyecto.json").exists()) entries += "Seguir con lo último" to { openProject(last) }
+        if (savedProjects().isNotEmpty()) entries += "Proyectos guardados…" to { showProjects() }
         recentFiles().forEach { (u, n) -> entries += n to { openUri(Uri.parse(u)) } }
         AlertDialog.Builder(this)
             .setTitle("Abrir")
@@ -429,29 +532,31 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
     // ------------------------------------------------------------------ soporte (siempre al abrir)
     private fun askSupport(d: Doc, keepCurrent: Boolean) {
-        val pad = dp(16f).toInt()
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0) }
-        val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val pad = dp(22f).toInt()
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, dp(10f).toInt(), pad, dp(10f).toInt()) }
         val customIdx = Support.PRESETS.size
-        val options = Support.PRESETS.map { "${it.name}  ·  ${nf(it.w)} × ${nf(it.h)} mm" } + "Personalizado  ·  X × Y mm"
-        val radios = options.mapIndexed { i, t -> RadioButton(this).apply { id = 100 + i; text = t } }
-        radios.forEach { group.addView(it) }
-        val custom = LinearLayout(this)
-        val cw = EditText(this).apply { hint = "Ancho X (mm) · máx. 304,8"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText("200") }
-        val ch = EditText(this).apply { hint = "Largo Y (mm)"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText("150") }
-        custom.addView(cw, LinearLayout.LayoutParams(0, -2, 1f)); custom.addView(ch, LinearLayout.LayoutParams(0, -2, 1f))
+        val tiles = LinearLayout(this)
+        val custom = LinearLayout(this).apply { setPadding(0, dp(2f).toInt(), 0, 0) }
+        val (cwBox, cw) = numField("Ancho X (mm) · máx. 304,8", "200")
+        val (chBox, ch) = numField("Largo Y (mm)", "150")
+        custom.addView(cwBox, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8f).toInt() })
+        custom.addView(chBox, LinearLayout.LayoutParams(0, -2, 1f))
         val onMat = Switch(this).apply { text = "Pegado sobre el mat" }
-        val fit = TextView(this).apply { setPadding(0, pad / 2, 0, 0) }
-        box.addView(group); box.addView(custom); box.addView(onMat); box.addView(fit)
+        val fit = TextView(this).apply {
+            setPadding(dp(12f).toInt(), dp(10f).toInt(), dp(12f).toInt(), dp(10f).toInt())
+            typeface = resources.getFont(R.font.barlow_semibold)
+            fontFeatureSettings = "tnum"
+        }
+        box.addView(tiles); box.addView(custom); box.addView(onMat)
+        box.addView(fit, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8f).toInt() })
 
         val cur = support
-        val start = if (keepCurrent && cur != null) Support.PRESETS.indexOfFirst { it.id == cur.id }.let { if (it < 0) customIdx else it } else 0
+        var picked = if (keepCurrent && cur != null) Support.PRESETS.indexOfFirst { it.id == cur.id }.let { if (it < 0) customIdx else it } else 0
         if (keepCurrent && cur != null && cur.id == "custom") { cw.setText(cur.w.toString()); ch.setText(cur.h.toString()) }
         onMat.isChecked = keepCurrent && cur?.onMat == true
-        group.check(100 + start)
 
         fun current(): Support? {
-            val i = group.checkedRadioButtonId - 100
+            val i = picked
             return if (i in Support.PRESETS.indices) Support.PRESETS[i].copy(onMat = !Support.PRESETS[i].mat && onMat.isChecked)
             else {
                 val w = cw.text.toString().replace(',', '.').toDoubleOrNull() ?: return null
@@ -461,7 +566,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         }
         var dialog: AlertDialog? = null
         fun update() {
-            val i = group.checkedRadioButtonId - 100
+            val i = picked
+            for (k in 0 until tiles.childCount) tiles.getChildAt(k).isActivated = k == i
             custom.visibility = if (i == customIdx) View.VISIBLE else View.GONE
             onMat.visibility = if (Support.PRESETS.getOrNull(i)?.mat == true) View.GONE else View.VISIBLE
             val s = current()
@@ -474,18 +580,22 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             }
             val out = if (s != null) d.items.count { !it.isImage && it.world().let { w -> (0 until w.size / 2).any { k -> w[2 * k] < -0.05 || w[2 * k + 1] < -0.05 || w[2 * k] > s.w + 0.05 || w[2 * k + 1] > s.h + 0.05 } } } else 0
             fit.text = when {
-                err != null -> "✕ $err"
-                out > 0 -> "✕ $out de ${d.items.count { !it.isImage }} trazados se salen (${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm)"
-                d.items.none { !it.isImage } -> "✓ Hoja de ${nf(s!!.w)} × ${nf(s.h)} mm"
-                else -> "✓ El diseño (${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm) cabe en ${nf(s!!.w)} × ${nf(s.h)} mm"
+                err != null -> err
+                out > 0 -> "$out de ${d.items.count { !it.isImage }} trazados se salen (${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm)"
+                d.items.none { !it.isImage } -> "Hoja de ${nf(s!!.w)} × ${nf(s.h)} mm"
+                else -> "El diseño (${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm) cabe en ${nf(s!!.w)} × ${nf(s.h)} mm"
             }
-            fit.setTextColor(if (err != null || out > 0) 0xFFFF9FD0.toInt() else 0xFF3CCF91.toInt())
+            noteStyle(fit, bad = err != null || out > 0)
             dialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
                 isEnabled = err == null
                 text = if (out > 0) "Continuar igual" else "Continuar"
             }
         }
-        group.setOnCheckedChangeListener { _, _ -> update() }
+        (Support.PRESETS.map { Triple(it.name, "${nf(it.w)} × ${nf(it.h)} mm", it.w to it.h) } +
+            Triple("Personalizado", "X × Y mm", 0.0 to 0.0)).forEachIndexed { i, (name, dims, size) ->
+            tiles.addView(supportTile(name, dims, size.first, size.second) { picked = i; update() },
+                LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(6f).toInt() })
+        }
         onMat.setOnCheckedChangeListener { _, _ -> update() }
         val watcher = object : TextWatcher {
             override fun afterTextChanged(s: Editable?) = update()
@@ -504,7 +614,57 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         dialog = dlg
         dlg.setOnShowListener { update() }
         dlg.show()
+        dlg.widen(640)
     }
+
+    /** Tarjeta de un soporte: la hoja dibujada a escala, nombre y medidas. Mat 12x12 = 64 dp de ancho. */
+    private fun supportTile(name: String, dims: String, wMm: Double, hMm: Double, onPick: () -> Unit): View {
+        val k = 64 / Support.MAT_MM
+        val sheet = View(this).apply { setBackgroundResource(if (wMm > 0) R.drawable.bg_sheet else R.drawable.bg_dashed) }
+        val sw = if (wMm > 0) wMm * k else 46.0
+        val sh = if (wMm > 0) minOf(hMm * k, 96.0) else 34.0
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            setBackgroundResource(R.drawable.bg_tile)
+            setPadding(dp(4f).toInt(), dp(10f).toInt(), dp(4f).toInt(), dp(8f).toInt())
+            isClickable = true
+            setOnClickListener { onPick() }
+            addView(sheet, LinearLayout.LayoutParams(dp(sw.toFloat()).toInt(), dp(sh.toFloat()).toInt()))
+            addView(TextView(context).apply {
+                text = name; textSize = 14f; gravity = Gravity.CENTER; maxLines = 1
+                typeface = resources.getFont(R.font.barlow_bold); setTextColor(getColor(R.color.ink))
+                setPadding(0, dp(6f).toInt(), 0, 0)
+            })
+            addView(TextView(context).apply {
+                text = dims; textSize = 12f; gravity = Gravity.CENTER; maxLines = 1; fontFeatureSettings = "tnum"
+                setTextColor(getColorStateList(R.color.tile_dims))
+                isDuplicateParentStateEnabled = true
+            })
+        }
+    }
+
+    /** Campo con su etiqueta encima. */
+    private fun numField(label: String, value: String): Pair<LinearLayout, EditText> {
+        val e = EditText(this, null, 0, R.style.Num).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(value)
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(context, null, 0, R.style.FieldLabel).apply { text = label })
+            addView(e, LinearLayout.LayoutParams(-1, dp(44f).toInt()))
+        }
+        return box to e
+    }
+
+    private fun noteStyle(t: TextView, bad: Boolean) {
+        t.setBackgroundResource(if (bad) R.drawable.bg_warn else R.drawable.bg_note)
+        t.setTextColor(getColor(if (bad) R.color.mag_ink else R.color.ink))
+    }
+
+    /** Ancho del diálogo en dp (más lo que ocupa el margen del fondo). */
+    private fun AlertDialog.widen(widthDp: Int) = window?.setLayout(dp(widthDp + 32f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
 
     private fun showDoc(d: Doc, s: Support) {
         if (d !== doc) openedFrom = null
@@ -519,7 +679,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         canvas.doc = d
         v<View>(R.id.emptyBox).visibility = View.GONE
         v<TextView>(R.id.fileName).text = d.name
-        refreshPanel()
+        if (resultVisible) hideResult() else refreshPanel()
     }
 
     // ------------------------------------------------------------------ panel
@@ -527,38 +687,49 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val d = doc
         val s = support
         val has = d != null && s != null
+        val busy = m.cutting || resultVisible           // mientras corta (o muestra el resultado) no se edita
         v<View>(R.id.supportChip).visibility = if (has) View.VISIBLE else View.GONE
-        v<View>(R.id.viewBar).visibility = if (has) View.VISIBLE else View.GONE
+        v<View>(R.id.viewBar).visibility = if (has && !busy) View.VISIBLE else View.GONE
+        v<View>(R.id.undoBar).visibility = if (has && !busy) View.VISIBLE else View.GONE
         v<View>(R.id.btnTools).visibility = if (has) View.VISIBLE else View.GONE
-        v<View>(R.id.btnAdd).visibility = if (has) View.VISIBLE else View.GONE
-        v<Button>(R.id.btnTools).setTextColor(if (showTools) 0xFFF0B429.toInt() else 0xFFE6E6E6.toInt())
-        v<Button>(R.id.bMulti).setTextColor(if (canvas.multi) 0xFFF0B429.toInt() else 0xFFE6E6E6.toInt())
+        v<View>(R.id.btnTools).isActivated = showTools
+        v<Button>(R.id.bMulti).isActivated = canvas.multi
+        val panel = if (has && panelOpen) View.VISIBLE else View.GONE
+        v<View>(R.id.sidePanel).visibility = panel
+        v<View>(R.id.panelRule).visibility = panel
         if (!has) return
         d!!; s!!
-        v<Button>(R.id.supportChip).text = "Soporte  ${s.label}"
+        v<Button>(R.id.supportChip).text = SpannableStringBuilder(s.name + if (s.onMat) " sobre mat" else "").apply {
+            val from = length
+            append("   ${nf(s.w, if (s.id == "custom") 1 else 0)} × ${nf(s.h, if (s.id == "custom") 1 else 0)} mm")
+            setSpan(ForegroundColorSpan(getColor(R.color.ink_2)), from, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
 
         val cutting = m.cutting
         val selCount = d.sel.size
         v<View>(R.id.editBar).visibility = if (selCount > 0 && showTools && !cutting) View.VISIBLE else View.GONE
-        v<Button>(R.id.bGroup).isEnabled = selCount >= 2
-        v<Button>(R.id.bUngroup).isEnabled = d.sel.any { it.startsWith("g") }
-        v<Button>(R.id.bLayerUp).isEnabled = d.selHasImage
-        v<Button>(R.id.bLayerDown).isEnabled = d.selHasImage
-        v<View>(R.id.cutBox).visibility = if (cutting) View.GONE else View.VISIBLE
-        v<View>(R.id.btnAdd).visibility = if (cutting) View.GONE else View.VISIBLE     // durante el corte no se edita
+        v<Button>(R.id.bGroup).apply {
+            isEnabled = selCount >= 2 || d.allGrouped
+            text = if (d.allGrouped) "Desagrupar" else "Agrupar"
+        }
+        v<Button>(R.id.bLayerUp).isEnabled = d.items.size >= 2
+        v<Button>(R.id.bLayerDown).isEnabled = d.items.size >= 2
+        v<View>(R.id.cutBox).visibility = if (busy) View.GONE else View.VISIBLE
+        v<View>(R.id.btnAdd).visibility = if (cutting) View.GONE else View.VISIBLE
         v<View>(R.id.btnSave).visibility = if (cutting) View.GONE else View.VISIBLE
-        v<Button>(R.id.bUndo).isEnabled = d.canUndo && !cutting
-        v<Button>(R.id.bRedo).isEnabled = d.canRedo && !cutting
+        v<ImageButton>(R.id.bUndo).apply { isEnabled = d.canUndo && !cutting; imageAlpha = if (isEnabled) 255 else 110 }
+        v<ImageButton>(R.id.bRedo).apply { isEnabled = d.canRedo && !cutting; imageAlpha = if (isEnabled) 255 else 110 }
 
         // selección
         v<View>(R.id.selSec).visibility = if (selCount > 0) View.VISIBLE else View.GONE
         if (selCount > 0) {
             val its = d.selItems()
-            val nPaths = its.count { !it.isImage }; val nImg = its.size - nPaths
-            val groups = d.sel.count { it.startsWith("g") }
-            val who = if (selCount == 1) (if (groups == 1) "1 grupo" else "1 forma") else "$selCount objetos"
-            v<TextView>(R.id.selTitle).text = "$who · $nPaths trazado${if (nPaths == 1) "" else "s"}" +
-                if (nImg > 0) " + $nImg imagen${if (nImg == 1) "" else "es"}" else ""
+            v<TextView>(R.id.selTitle).text = when {
+                selCount > 1 -> "$selCount objetos"
+                d.allGrouped -> "1 grupo"
+                its.any { it.isImage } -> "1 imagen"
+                else -> "1 forma"
+            }
             val b = d.selBBox()
             for ((id, value) in listOf(R.id.fx to b[0], R.id.fy to b[1], R.id.fw to b[2] - b[0], R.id.fh to b[3] - b[1])) {
                 val e = v<EditText>(id)
@@ -570,10 +741,15 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val pnc = v<Switch>(R.id.swPnc).isChecked
         val manual = v<RadioButton>(R.id.pncManual).isChecked
         v<View>(R.id.pncBox).visibility = if (pnc) View.VISIBLE else View.GONE
-        v<View>(R.id.pncManualNote).visibility = if (manual) View.VISIBLE else View.GONE
         v<View>(R.id.pSearchRow).alpha = if (manual) 0.45f else 1f
         val r = if (pnc) regmarks() else null
         canvas.regmarks = r
+        v<TextView>(R.id.pncLine).text = when {
+            !pnc -> "Leer marcas antes de cortar"
+            manual -> "Deja la cuchilla sobre el cuadrado negro"
+            r == null -> "Revisa los valores de las marcas"
+            else -> "Búsqueda ${nf(r.searchX, 0)} / ${nf(r.searchY, 0)} mm · inset ${nf(r.inset, 0)} / ${nf(r.bottom, 0)} mm"
+        }
         val pncProblems = mutableListOf<String>()
         var pncBlocks = false
         if (pnc) {
@@ -604,22 +780,82 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val len = shapes.sumOf { it.world().let { w -> (1 until w.size / 2).sumOf { k -> Math.hypot(w[2 * k] - w[2 * k - 2], w[2 * k + 1] - w[2 * k - 1]) } } }
         val kind = when (d.kind) { "studio3" -> "Silhouette .studio3"; "nuevo" -> "Hoja en blanco"; else -> d.kind.uppercase() }
         val imgs = d.items.count { it.isImage }
-        v<TextView>(R.id.docInfo).text = buildString {
-            append("Tipo  $kind\n")
-            if (d.kind != "nuevo") append("Página del archivo  ${nf(d.pageW)} × ${nf(d.pageH)} mm\n")
-            if (shapes.isNotEmpty()) append("Diseño  ${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm\n")
-            append("Trazados  ${shapes.size}\n")
-            append("Largo de corte  ${nf(len / 10)} cm")
-            if (imgs > 0) append("\nImágenes  $imgs (solo se ven, no se cortan)")
+        val rows = buildList {
+            add("Tipo" to kind)
+            if (d.kind != "nuevo") add("Página del archivo" to "${nf(d.pageW)} × ${nf(d.pageH)} mm")
+            if (shapes.isNotEmpty()) add("Diseño" to "${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm")
+            add("Trazados" to "${shapes.size}")
+            add("Largo de corte" to "${nf(len / 10)} cm")
+            if (imgs > 0) add("Imágenes" to "$imgs")
         }
+        showDocRows(rows)
         val warns = d.warnings + if (out > 0) listOf("$out trazados se salen del soporte y no se cortarán.") else emptyList()
         v<TextView>(R.id.docWarn).apply { text = warns.joinToString("\n"); visibility = if (warns.isEmpty()) View.GONE else View.VISIBLE }
 
-        val toCut = shapes.size - out
+        cutTotal = shapes.size
+        cutOutside = out
+        pncBlocked = pnc && pncBlocks
+        refreshPrimary()
+    }
+
+    private var shownRows: List<Pair<String, String>> = emptyList()
+
+    private fun showDocRows(rows: List<Pair<String, String>>) {
+        if (rows == shownRows) return
+        shownRows = rows
+        val box = v<LinearLayout>(R.id.docRows)
+        box.removeAllViews()
+        for ((k, value) in rows) box.addView(LinearLayout(this).apply {
+            setPadding(0, dp(2f).toInt(), 0, dp(2f).toInt())
+            addView(TextView(context).apply { text = k; textSize = 14f; setTextColor(getColor(R.color.ink_2)) },
+                LinearLayout.LayoutParams(0, -2, 1f))
+            addView(TextView(context).apply {
+                text = value; textSize = 14f; setTextColor(getColor(R.color.ink)); fontFeatureSettings = "tnum"
+                typeface = resources.getFont(R.font.barlow_semibold)
+            })
+        })
+    }
+
+    /** Una sola acción principal: lo que falta para cortar. Se recalcula con cada aviso de la máquina. */
+    private fun refreshPrimary() {
+        val d = doc ?: return
+        val s = support ?: return
+        val pnc = v<Switch>(R.id.swPnc).isChecked
+        val noMaterial = m.machineText == "sin material"
+        val needPrint = pnc && !s.mat && m.connected && !noMaterial && !m.cutting && !pncBlocked &&
+            printedSig == null && d.items.any { it.isImage }
+        if (needPrint != printIsPrimary) {
+            printIsPrimary = needPrint
+            v<Button>(R.id.btnPrint).setBackgroundResource(if (needPrint) R.drawable.bg_primary_flat else R.drawable.bg_flat)
+            v<Button>(R.id.bCut).setBackgroundResource(if (needPrint) R.drawable.bg_outline else R.drawable.bg_primary)
+        }
+        val toCut = cutTotal - cutOutside
         v<Button>(R.id.bCut).apply {
-            isEnabled = toCut > 0 && !cutting && !(pnc && pncBlocks)
-            text = (if (pnc) "Escanear y cortar " else "Cortar ") +
-                if (out > 0) "$toCut de ${shapes.size} trazados" else "${shapes.size} trazados"
+            when {
+                m.connecting -> { text = "Conectando…"; isEnabled = false }
+                !m.connected -> { text = "Conectar Cameo"; isEnabled = true }
+                noMaterial -> { text = "Carga el material"; isEnabled = true }
+                else -> {
+                    text = (if (pnc) "Escanear y cortar " else "Cortar ") +
+                        if (cutOutside > 0) "$toCut de ${plural(cutTotal)}" else plural(cutTotal)
+                    isEnabled = toCut > 0 && !m.cutting && !pncBlocked && !preparingCut
+                }
+            }
+        }
+        val mat = materials.getOrNull(v<Spinner>(R.id.material).selectedItemPosition)
+        val passes = v<EditText>(R.id.passes).text.toString().toIntOrNull() ?: 1
+        v<TextView>(R.id.summary).apply {
+            visibility = if (panelOpen || mat == null) View.GONE else View.VISIBLE
+            if (mat != null) text = "${mat.getString("name")} · vel. ${v<EditText>(R.id.speed).text} · " +
+                "pres. ${v<EditText>(R.id.pressure).text} · $passes ${if (passes == 1) "pasada" else "pasadas"}"
+        }
+    }
+
+    private fun primaryAction() {
+        when {
+            !m.connected -> if (!m.reconnect()) startActivity(Intent(this, MainActivity::class.java))
+            m.machineText == "sin material" -> m.run("Estado") { m.refreshStatus() }    // al cargarlo, vuelve a preguntar
+            else -> confirmCut()
         }
     }
 
@@ -629,6 +865,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         refreshPanel(); canvas.invalidate()
     }
     override fun onEdited() { refreshPanel(); canvas.invalidate() }
+
+    private fun moveLayer(dir: Int) {
+        val d = doc ?: return
+        val before = d.snapshot()
+        if (d.moveLayer(dir)) { d.pushUndo(before); onEdited() }
+        else toast(if (dir > 0) "Ya está arriba de todo" else "Ya está abajo de todo")
+    }
 
     private fun edit(block: (Doc) -> Unit) {
         val d = doc ?: return
@@ -651,16 +894,14 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         if (v<Switch>(R.id.swPnc).isChecked && support?.mat == false) regmarks() else null
 
     private fun togglePanel() {
-        val p = v<View>(R.id.sidePanel)
-        val open = p.visibility != View.VISIBLE
-        p.visibility = if (open) View.VISIBLE else View.GONE
-        v<Button>(R.id.bPanel).text = if (open) "▶" else "◀"
-        canvas.post { canvas.fit() }
+        panelOpen = !panelOpen
+        v<ImageButton>(R.id.bPanel).setImageResource(if (panelOpen) R.drawable.ic_chevron_right else R.drawable.ic_chevron_left)
+        refreshPanel()
     }
 
     private fun showAddMenu() {
         if (doc == null) return
-        val labels = arrayOf("🖼  Imagen… (PNG / JPG)", "◯  Círculo", "▭  Rectángulo", "▢  Rectángulo redondeado")
+        val labels = arrayOf("Imagen (PNG / JPG)", "Círculo", "Rectángulo", "Rectángulo redondeado")
         AlertDialog.Builder(this)
             .setTitle("Agregar")
             .setItems(labels) { _, i ->
@@ -715,14 +956,18 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     private fun askFill() {
         val d = doc ?: return
         if (d.sel.isEmpty()) return
-        val pad = dp(16f).toInt()
+        val pad = dp(22f).toInt()
         val area = workArea()
-        val gap = EditText(this).apply {
-            hint = "Separación (mm)"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            setText(m.prefs.getString("fill_gap", "3"))
+        val (gapBox, gap) = numField("Separación (mm)", m.prefs.getString("fill_gap", "3") ?: "3")
+        val info = TextView(this).apply {
+            setPadding(dp(12f).toInt(), dp(10f).toInt(), dp(12f).toInt(), dp(10f).toInt())
+            typeface = resources.getFont(R.font.barlow_semibold); fontFeatureSettings = "tnum"
         }
-        val info = TextView(this).apply { setPadding(0, pad / 2, 0, 0) }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0); addView(gap); addView(info) }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(pad, dp(10f).toInt(), pad, 0)
+            addView(gapBox, LinearLayout.LayoutParams(dp(160f).toInt(), -2))
+            addView(info, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10f).toInt() })
+        }
         fun gapMm() = gap.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
         var dialog: AlertDialog? = null
         fun update() {
@@ -734,7 +979,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 !ok -> "Serían ${p.count} copias: el máximo es ${Doc.MAX_FILL}. Sube la separación o agranda el diseño."
                 else -> "Caben ${p.count} copias (${p.cols} × ${p.rows}) de ${nf(p.w)} × ${nf(p.h)} mm en ${nf(aw)} × ${nf(ah)} mm"
             }
-            info.setTextColor(if (ok) 0xFF3CCF91.toInt() else 0xFFFF9FD0.toInt())
+            noteStyle(info, bad = !ok)
             dialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = ok
         }
         gap.addTextChangedListener(object : TextWatcher {
@@ -757,6 +1002,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         dialog = dlg
         dlg.setOnShowListener { update() }
         dlg.show()
+        dlg.widen(460)
     }
 
     /** X, Y, ancho y alto exactos en mm (con o sin proporción). */
@@ -790,8 +1036,9 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             val bl = js.getJSONArray("blades").toList()
             runOnUiThread {
                 materials = mats; blades = bl
-                v<Spinner>(R.id.material).adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+                v<Spinner>(R.id.material).adapter = ArrayAdapter(this, R.layout.spinner_item,
                     mats.map { it.getString("name") + if (it.optBoolean("own")) " · propio" else "" })
+                    .apply { setDropDownViewResource(R.layout.spinner_drop) }
                 // el último material usado
                 val last = m.prefs.getString("material", null)
                 mats.indexOfFirst { it.optString("id") == last }.takeIf { it >= 0 }?.let { v<Spinner>(R.id.material).setSelection(it) }
@@ -816,15 +1063,15 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<TextView>(R.id.bladeName).text = b.getString("name") + if (b.optInt("tool", 1) == 2) " · carro 2" else ""
         v<EditText>(R.id.offset).setText(b.getDouble("offset_mm").toString())
         refreshOffsetNote()
+        refreshPrimary()
     }
 
     private fun refreshOffsetNote() {
         val mat = materials.getOrNull(v<Spinner>(R.id.material).selectedItemPosition) ?: return
         val base = bladeOf(mat).getDouble("offset_mm")
         val now = v<EditText>(R.id.offset).text.toString().replace(',', '.').toDoubleOrNull()
-        v<TextView>(R.id.offsetNote).text = "Perfil: ${nf(base, 2)} mm" +
-            (if (now != null && Math.abs(now - base) > 1e-9) " · cambiado solo para este corte" else "") +
-            ". Si las esquinas salen redondeadas, sube de a 0,05 mm."
+        v<TextView>(R.id.offsetNote).text = "Offset (mm) · perfil ${nf(base, 2)}" +
+            if (now != null && Math.abs(now - base) > 1e-9) " · solo este corte" else ""
     }
 
     // ------------------------------------------------------------------ cortar
@@ -858,13 +1105,14 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val pnc = v<Switch>(R.id.swPnc).isChecked
         val r = if (pnc) regmarks() ?: run { toast("Revisa los valores de las marcas"); return } else null
         val inside = d.items.filter { !it.isImage && !canvas.isOutside(it) }.map { it.id }.toSet()
-        v<Button>(R.id.bCut).isEnabled = false
+        preparingCut = true
+        refreshPrimary()
         // orden de corte recalculado con lo editado (interiores primero, ordering.py): con miles de
         // trazados son muchas cuentas, así que va fuera del hilo de UI
         m.files.execute {
             val items = d.cutOrder { it.id in inside }
             val paths = items.map { it.world().let { w -> List(w.size / 2) { k -> w[2 * k] to w[2 * k + 1] } } }
-            runOnUiThread { refreshPanel(); confirmCut2(d, sup, s, r, items, paths) }
+            runOnUiThread { preparingCut = false; refreshPanel(); confirmCut2(d, sup, s, r, items, paths) }
         }
     }
 
@@ -873,26 +1121,26 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val mat = materials.getOrNull(v<Spinner>(R.id.material).selectedItemPosition)
         val len = paths.sumOf { p -> p.zipWithNext().sumOf { (a, b) -> Math.hypot(b.first - a.first, b.second - a.second) } } * s.passes
         val rows = mutableListOf(
-            "Soporte" to sup.label,
+            "Soporte" to sup.name + if (sup.onMat) " sobre mat" else "",
             "Material" to (mat?.getString("name") ?: "—"),
             "Velocidad · presión · pasadas" to "${s.speed} · ${s.pressure} · ${s.passes}",
-            "Cuchilla" to "${v<TextView>(R.id.bladeName).text} · offset ${nf(s.bladeOffsetMm, 2)} mm${if (s.sharpenCorners) " · esquinas afiladas" else ""}",
+            "Cuchilla" to "${v<TextView>(R.id.bladeName).text} · ${nf(s.bladeOffsetMm, 2)} mm${if (s.sharpenCorners) " · esquinas afiladas" else ""}",
             "Largo de corte" to "${nf(len / 10)} cm",
-            "Al terminar" to "vuelve al origen",
         )
         // solo con datos reales de tus cortes; sin mediciones no se inventa un número
-        m.estimateSeconds(s.speed, len)?.let { sec ->
-            rows.add(rows.size - 1, "Tiempo aproximado" to if (sec < 90) "≈ $sec s" else "≈ ${(sec + 30) / 60} min")
-        }
-        if (r != null) rows.add(1, "Print & Cut" to if (r.manual) "manual · cuchilla sobre el cuadrado"
-            else "automático · búsqueda ${nf(r.searchX)} / ${nf(r.searchY)} mm · inset ${nf(r.inset)}/${nf(r.bottom)}")
+        m.estimateSeconds(s.speed, len)?.let { sec -> rows += "Tiempo aproximado" to "≈ ${duration(sec.toLong())}" }
+        if (r != null) rows += "Print & Cut" to if (r.manual) "Manual · cuchilla sobre el cuadrado"
+            else "Automático · búsqueda ${nf(r.searchX, 0)} / ${nf(r.searchY, 0)} mm"
+        val action = if (r != null) "Escanear y cortar" else "Cortar"
         val go = {
             AlertDialog.Builder(this)
-                .setTitle("${if (r != null) "Escanear y cortar" else "Cortar"} ${paths.size} trazados")
-                .setMessage(d.name + "\n\n" + rows.joinToString("\n") { (k, v) -> "$k:  $v" })
-                .setPositiveButton(if (r != null) "Escanear y cortar" else "Cortar") { _, _ -> startCut(s, items, paths, r) }
+                .setTitle("Cortar ${plural(paths.size)}")
+                .setMessage(d.name)
+                .setView(android.widget.ScrollView(this).apply { addView(readSheet(rows)) })
+                .setPositiveButton(action) { _, _ -> startCut(s, items, paths, r) }
                 .setNegativeButton("Cancelar", null)
                 .show()
+                .widen(560)
         }
         // Print & Cut: si se movió algo después de imprimir, la hoja ya no calza
         if (r != null && printedSig != null && printedSig != signature(d)) {
@@ -904,6 +1152,23 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 .setNegativeButton("Cancelar", null)
                 .show()
         } else go()
+    }
+
+    /** Lo irreversible se confirma con datos: rótulo chico y valor grande, de a dos por fila. */
+    private fun readSheet(rows: List<Pair<String, String>>): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(22f).toInt(), dp(8f).toInt(), dp(22f).toInt(), dp(4f).toInt())
+        for (pair in rows.chunked(2)) addView(LinearLayout(context).apply {
+            for ((k, value) in pair) addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(context).apply { text = k; textSize = 13f; setTextColor(getColor(R.color.ink_2)) })
+                addView(TextView(context).apply {
+                    text = value; textSize = 20f; setTextColor(getColor(R.color.ink)); fontFeatureSettings = "tnum"
+                    typeface = resources.getFont(R.font.barlow_bold)
+                })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(16f).toInt(); bottomMargin = dp(12f).toInt() })
+            if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
+        })
     }
 
     private fun startCut(s: Gpgl.CutSettings, items: List<Item>, paths: List<List<Pair<Double, Double>>>, r: Gpgl.Regmarks?) {
@@ -918,6 +1183,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         } }
         m.cut(s, paths, preCut)?.let { toast(it); return }
         doc?.sel?.clear()
+        cutStartedAt = System.currentTimeMillis()
+        wasCutting = true       // un fallo inmediato llega antes del primer aviso de la máquina
         cutSizes = paths.map { it.size }
         cutPasses = s.passes
         canvas.cutOrder = items.map { it.id }
@@ -945,7 +1212,9 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
      *  la hoja impresa ya no calza. Solo cuenta si la impresión no se canceló ni falló. */
     private fun signature(d: Doc): String = (support?.label ?: "") + "|" + regmarks()?.let {
         "${it.inset},${it.bottom},${it.thick},${it.length}" } + "|" +
-        d.items.joinToString(";") { "${it.id}:" + it.t.joinToString(",") { v -> "%.2f".format(java.util.Locale.US, v) } }
+        // subir o bajar una línea no cambia lo impreso: las imágenes cuentan en su orden, las líneas no
+        (d.items.filter { it.isImage } + d.items.filter { !it.isImage }.sortedBy { it.id })
+            .joinToString(";") { "${it.id}:" + it.t.joinToString(",") { v -> "%.2f".format(java.util.Locale.US, v) } }
 
     private var printJob: android.print.PrintJob? = null
     private val printedSig: String?
@@ -971,7 +1240,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 m.onLog("No se pudo preparar la hoja: ${e.message}")
                 m.toast("No se pudo preparar la hoja: ${e.message}")
             } finally {
-                runOnUiThread { v<Button>(R.id.btnPrint).text = "🖨 Imprimir"; refreshPanel() }
+                runOnUiThread { v<Button>(R.id.btnPrint).text = "Imprimir"; refreshPanel() }
             }
         }
     }
@@ -1063,7 +1332,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             val (ok, resp) = m.findRegmarks(r)
             if (ok) ses.sendCommands(listOf("SO0", "FN0"))     // si falla, findRegmarks ya lo mandó
             m.setMachine(if (ok) "marcas encontradas" else "marcas NO encontradas")
-            m.toast(if (ok) "Marcas encontradas ✓" else "No encontró las marcas (respuesta ${resp ?: "ninguna"})")
+            m.toast(if (ok) "Marcas encontradas" else "No encontró las marcas (respuesta ${resp ?: "ninguna"})")
         }
     }
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

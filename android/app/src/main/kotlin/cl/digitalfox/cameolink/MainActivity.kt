@@ -18,10 +18,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
@@ -54,8 +56,8 @@ class MainActivity : Activity(), Machine.Observer {
         logView = findViewById(R.id.log)
 
         findViewById<Spinner>(R.id.mat).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                listOf("Sin mat", "Mat 12x12", "Mat 12x24"))
+            adapter = ArrayAdapter(this@MainActivity, R.layout.spinner_item, listOf("Sin mat", "Mat 12x12", "Mat 12x24"))
+                .apply { setDropDownViewResource(R.layout.spinner_drop) }
             setSelection(1)     // mismo valor por defecto que el panel de Illustrator
         }
 
@@ -66,7 +68,7 @@ class MainActivity : Activity(), Machine.Observer {
         val advBtn = findViewById<Button>(R.id.btnAdvanced)
         fun showAdv(open: Boolean) {
             adv.visibility = if (open) android.view.View.VISIBLE else android.view.View.GONE
-            advBtn.text = if (open) "Opciones avanzadas ▴" else "Opciones avanzadas ▾"
+            advBtn.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, if (open) R.drawable.ic_expand_less else R.drawable.ic_expand_more, 0)
         }
         showAdv(prefs.getBoolean("advanced", false))
         advBtn.setOnClickListener {
@@ -75,7 +77,7 @@ class MainActivity : Activity(), Machine.Observer {
             showAdv(open)
         }
 
-        findViewById<Button>(R.id.btnScan).setOnClickListener { withPermissions { showScanDialog() } }
+        findViewById<Button>(R.id.btnScan).setOnClickListener { withPermissions { startSearch() } }
         findViewById<Button>(R.id.btnDisconnect).setOnClickListener { m.disconnect() }
         findViewById<Button>(R.id.btnChannels).setOnClickListener { showChannelDialog() }
         findViewById<Button>(R.id.btnStatus).setOnClickListener { m.run("Estado") { m.refreshStatus() } }
@@ -99,11 +101,11 @@ class MainActivity : Activity(), Machine.Observer {
             }
         }
 
-        findViewById<Button>(R.id.btnUp).setOnClickListener { jog(0.0, -step()) }
-        findViewById<Button>(R.id.btnDown).setOnClickListener { jog(0.0, step()) }
-        findViewById<Button>(R.id.btnLeft).setOnClickListener { jog(-step(), 0.0) }
-        findViewById<Button>(R.id.btnRight).setOnClickListener { jog(step(), 0.0) }
-        findViewById<Button>(R.id.btnHome).setOnClickListener { jog(-m.posX, -m.posY) }
+        findViewById<View>(R.id.btnUp).setOnClickListener { jog(0.0, -step()) }
+        findViewById<View>(R.id.btnDown).setOnClickListener { jog(0.0, step()) }
+        findViewById<View>(R.id.btnLeft).setOnClickListener { jog(-step(), 0.0) }
+        findViewById<View>(R.id.btnRight).setOnClickListener { jog(step(), 0.0) }
+        findViewById<View>(R.id.btnHome).setOnClickListener { jog(-m.posX, -m.posY) }
 
         findViewById<Button>(R.id.btnCut).setOnClickListener { confirmTestCut() }
 
@@ -128,10 +130,24 @@ class MainActivity : Activity(), Machine.Observer {
     }
 
     override fun onMachineChanged() {
-        connState.text = m.connText
-        connState.setTextColor(if (m.connected) 0xFF3CCF91.toInt() else 0xFFE6E6E6.toInt())
-        machineState.text = "Máquina: ${m.machineText}"
-        position.text = "X ${nf(m.posX)} · Y ${nf(m.posY)} mm (desde el origen)"
+        val bad = m.machineText == "sin material" || m.machineText.startsWith("sin respuesta")
+        findViewById<PlateView>(R.id.mark).state = when {
+            m.connecting -> Register.BUSY
+            m.connected && !bad -> Register.READY
+            else -> Register.OFF
+        }
+        connState.text = when {
+            m.connected -> m.session.link?.label?.substringAfter(' ') ?: "Cameo"
+            m.connecting -> "Conectando…"
+            else -> "Sin conexión"
+        }
+        machineState.text = when {
+            m.connected -> if (m.machineText == "—") "Conectada" else m.machineText.replaceFirstChar { it.uppercase() }
+            m.connecting -> "Espera un momento"
+            else -> m.connText.substringAfter("Sin conexión: ", "Enciende la Cameo y búscala")
+        }
+        renderDevices()
+        position.text = "X ${nf(m.posX)} · Y ${nf(m.posY)} mm desde el origen"
         logView.text = m.logLines.take(300).joinToString("\n")     // lo más nuevo; Compartir manda todo
     }
 
@@ -198,13 +214,11 @@ class MainActivity : Activity(), Machine.Observer {
             BluetoothDevice.DEVICE_TYPE_UNKNOWN -> 2
             else -> 3
         }
-        // lista simple: solo el nombre (sin dirección ni señal); el detalle técnico queda en el registro
-        override fun toString(): String =
-            (if (looksLikeCameo) "★ " else "") + (cleanName ?: "(sin nombre)") + if ("Emparejado" in via) "   · emparejada" else ""
     }
 
     private val found = linkedMapOf<String, Found>()
-    private var listAdapter: ArrayAdapter<Found>? = null
+    private var devices: List<Found> = emptyList()
+    private var shownDevices: List<Any?>? = null
     private var scanning = false
     private var receiverRegistered = false
 
@@ -232,43 +246,67 @@ class MainActivity : Activity(), Machine.Observer {
         if (name != null) f.name = name
         if (rssi != null) f.rssi = rssi
         f.via += via
-        val a = listAdapter ?: return@post
-        a.clear()
         // solo equipos con nombre (los anónimos son ruido: relojes, TV, sensores); la Cameo primero.
         // La Cameo 4 tiene DOS direcciones con el mismo nombre (clásica 00:1B… y BLE C0:1B…): se muestra
         // una sola, la clásica, que es por donde corta (la BLE no conecta por puerto serie).
         // solo se juntan las Cameo (sus dos direcciones); otros equipos con el mismo nombre (dos
         // parlantes iguales) siguen apareciendo por separado
-        a.addAll(found.values.filter { !it.cleanName.isNullOrEmpty() }
+        devices = found.values.filter { !it.cleanName.isNullOrEmpty() }
             .groupBy { if (it.looksLikeCameo) "cameo:${it.cleanName}" else "addr:${it.device.address}" }.values
             .map { same -> same.minBy { it.sppRank } }
             .sortedWith(compareByDescending<Found> { it.looksLikeCameo }
-                .thenByDescending { "Emparejado" in it.via }.thenByDescending { it.rssi ?: -999 }))
+                .thenByDescending { "Emparejado" in it.via }.thenByDescending { it.rssi ?: -999 })
+        renderDevices()
     }
 
-    private fun showScanDialog() {
-        found.clear()
-        val a = ArrayAdapter<Found>(this, android.R.layout.simple_list_item_1, mutableListOf())
-        listAdapter = a
-        for (d in m.adapter.bondedDevices.orEmpty()) addFound(d, d.name, null, "Emparejado")
+    private val endScan = Runnable { stopScan(); renderDevices() }
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Buscando la Cameo… (enciéndela)")
-            .setAdapter(a) { _, which -> a.getItem(which)?.let { chooseTransport(it) } }
-            .setNegativeButton("Cancelar", null)
-            .create()
-        val timeout = Runnable {
-            stopScan()
-            dialog.setTitle("Elige la Cameo")
-        }
-        dialog.setOnDismissListener {
-            ui.removeCallbacks(timeout)     // que no corte una búsqueda posterior
-            stopScan()
-            listAdapter = null
-        }
-        dialog.show()
+    /** Busca 15 s; la lista se llena en la misma pantalla. */
+    private fun startSearch() {
+        ui.removeCallbacks(endScan)
+        stopScan()
+        found.clear(); devices = emptyList()
+        for (d in m.adapter.bondedDevices.orEmpty()) addFound(d, d.name, null, "Emparejado")
         startScan()
-        ui.postDelayed(timeout, 15_000)
+        renderDevices()
+        ui.postDelayed(endScan, 15_000)
+    }
+
+    /** Lista simple: el nombre y, si corresponde, «emparejada»; el detalle técnico queda en el registro. */
+    private fun renderDevices() {
+        val here = m.spp?.takeIf { m.connected }?.address
+        // solo si cambió: rehacer las filas entre el apoyar y el levantar del dedo pierde el toque
+        val key = listOf(scanning, here, devices.map { it.device.address to it.cleanName })
+        if (key == shownDevices) return
+        shownDevices = key
+        findViewById<TextView>(R.id.foundTitle).text = if (scanning) "Buscando… (enciende la Cameo)" else "Encontradas"
+        val box = findViewById<LinearLayout>(R.id.devBox)
+        box.removeAllViews()
+        for (f in devices) box.addView(LinearLayout(this).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            minimumHeight = dp(56f).toInt()
+            setBackgroundResource(R.drawable.bg_row)
+            isClickable = true
+            setOnClickListener { chooseTransport(f) }
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(context).apply {
+                    text = f.cleanName; textSize = 15f; setTextColor(getColor(R.color.ink))
+                    typeface = resources.getFont(R.font.barlow_semibold)
+                })
+                if ("Emparejado" in f.via) addView(TextView(context).apply { text = "Emparejada"; textSize = 13f; setTextColor(getColor(R.color.ink_2)) })
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            if (f.device.address == here) addView(TextView(context).apply {
+                text = "Conectada"; textSize = 13f; setTextColor(getColor(R.color.ink))
+                typeface = resources.getFont(R.font.barlow_bold)
+                setBackgroundResource(R.drawable.bg_tag)
+                setPadding(dp(10f).toInt(), dp(3f).toInt(), dp(10f).toInt(), dp(3f).toInt())
+            })
+        })
+        if (devices.isEmpty()) box.addView(TextView(this).apply {
+            text = if (scanning) "Sin resultados todavía" else "Toca Buscar Cameo"
+            textSize = 14f; setTextColor(getColor(R.color.ink_2))
+        })
     }
 
     private fun startScan() {
@@ -297,6 +335,7 @@ class MainActivity : Activity(), Machine.Observer {
 
     /** BLE o clásico: si el dispositivo es dual (o no se sabe) se pregunta. La Cameo 4 va por clásico. */
     private fun chooseTransport(f: Found) {
+        ui.removeCallbacks(endScan)
         stopScan()
         m.onLog("Elegido ${f.name} · ${f.device.address} · ${f.via.sorted().joinToString("+")}${f.rssi?.let { " · $it dBm" } ?: ""}")
         // la Cameo 4 habla por Bluetooth clásico (verificado): sin preguntar. Se prueban todas sus

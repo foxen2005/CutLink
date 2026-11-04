@@ -9,6 +9,85 @@ import kotlin.math.hypot
 class DocTest {
     private fun doc() = Doc("t", "nuevo", 210.0, 297.0, emptyList())
 
+    /** Imagen de [w] × [h] mm sin Bitmap, al fondo de la pila, como la deja abrir un archivo. */
+    private fun Doc.image(id: Int, cx: Double, cy: Double, w: Double, h: Double): Item {
+        val it = Item(id, true, DoubleArray(0), true, doubleArrayOf(w / 2, 0.0, 0.0, h / 2, cx, cy), null)
+        items.add(0, it)
+        return it
+    }
+
+    @Test
+    fun imageUnderAShapeCanBeTouched() {
+        val d = doc()
+        d.addShape(Shapes.CIRCLE, 50.0, 50.0, 40.0, 40.0)
+        val circle = d.items.last()
+        val img = d.image(1000, 50.0, 50.0, 20.0, 20.0)
+        assertEquals(img, d.hit(50.0, 50.0, 1.0))           // dentro del círculo y sobre la imagen
+        assertEquals(circle, d.hit(70.0, 50.0, 1.0))        // en el trazo
+        assertEquals(circle, d.hit(35.0, 50.0, 1.0))        // dentro del círculo, fuera de la imagen
+    }
+
+    @Test
+    fun lineBelowAnImageIsCoveredByIt() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 50.0, 50.0, 40.0, 40.0)
+        val line = d.items.last()
+        val img = d.image(1000, 50.0, 50.0, 60.0, 60.0)
+        assertEquals(line, d.hit(70.0, 50.0, 1.0))
+        d.sel.clear(); d.sel += d.keyOf(line)
+        assertTrue(d.moveLayer(-1))
+        assertEquals(listOf(line, img), d.items)
+        assertEquals(img, d.hit(70.0, 50.0, 1.0))
+        assertEquals(false, d.moveLayer(-1))                // ya está abajo de todo
+        assertTrue(d.moveLayer(1))
+        assertEquals(listOf(img, line), d.items)
+    }
+
+    @Test
+    fun layerStepsOverWhatItDoesNotCross() {
+        val d = doc()
+        val img = d.image(1000, 50.0, 50.0, 20.0, 20.0)
+        d.addShape(Shapes.RECT, 150.0, 150.0, 10.0, 10.0)   // lejos: no cuenta como un paso
+        val far = d.items.last()
+        d.addShape(Shapes.RECT, 50.0, 50.0, 10.0, 10.0)
+        val near = d.items.last()
+        assertTrue(d.moveLayer(-1))
+        assertEquals(listOf(near, img, far), d.items)
+    }
+
+    @Test
+    fun duplicatedImageStaysUnderTheLines() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 50.0, 50.0, 40.0, 40.0)
+        val line = d.items.last()
+        val img = d.image(1000, 150.0, 150.0, 20.0, 20.0)
+        d.sel.clear(); d.sel += d.keyOf(img)
+        d.duplicate()
+        assertEquals(listOf(true, true, false), d.items.map { it.isImage })
+        assertEquals(line, d.items.last())
+    }
+
+    @Test
+    fun severalGroupsCanBeUngrouped() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 20.0, 20.0, 10.0, 10.0)
+        d.fill(doubleArrayOf(0.0, 0.0, 30.0, 12.0), 2.0)     // cada copia queda como su grupo
+        assertTrue(d.sel.size > 1 && d.allGrouped)
+        d.ungroup()
+        assertEquals(false, d.allGrouped)
+    }
+
+    @Test
+    fun cutOrderIgnoresTheStack() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 50.0, 50.0, 40.0, 40.0)
+        val a = d.items.last()
+        d.image(1000, 50.0, 50.0, 60.0, 60.0)
+        d.sel.clear(); d.sel += d.keyOf(a)
+        d.moveLayer(-1)
+        assertEquals(listOf(a), d.cutOrder { true })        // tapada, se corta igual
+    }
+
     @Test
     fun circleHasRadiusAndIsClosed() {
         val p = Shapes.points(Shapes.CIRCLE, 50.0, 40.0, 30.0, 30.0, 0.0)
