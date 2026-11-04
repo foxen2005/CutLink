@@ -28,6 +28,13 @@
             android:layout_marginStart="12dp"
             android:text="Abrir archivo" />
 
+        <Button
+            android:id="@+id/btnAdd"
+            style="@style/Tool"
+            android:layout_marginStart="6dp"
+            android:text="＋ Agregar"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/fileName"
             android:layout_width="0dp"
@@ -104,6 +111,12 @@
                     android:text="Abrir archivo"
                     android:textColor="#FF001F26" />
 
+                <Button
+                    android:id="@+id/btnBlank"
+                    style="@style/Tool"
+                    android:layout_marginTop="6dp"
+                    android:text="Hoja en blanco" />
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -127,6 +140,7 @@
                 android:layout_gravity="top|end"
                 android:layout_marginTop="10dp"
                 android:layout_marginEnd="10dp"
+                android:layout_marginBottom="130dp"
                 android:visibility="gone">
 
                 <LinearLayout
@@ -139,7 +153,12 @@
                     <Button android:id="@+id/bGroup" style="@style/Tool" android:layout_width="match_parent" android:text="Agrupar" />
                     <Button android:id="@+id/bUngroup" style="@style/Tool" android:layout_width="match_parent" android:text="Desagrupar" />
                     <Button android:id="@+id/bDup" style="@style/Tool" android:layout_width="match_parent" android:text="Duplicar" />
-                    <Button android:id="@+id/bCenter" style="@style/Tool" android:layout_width="match_parent" android:text="⊕ Centrar en hoja" />
+                    <Button android:id="@+id/bFill" style="@style/Tool" android:layout_width="match_parent" android:text="▦ Rellenar" />
+                    <Button android:id="@+id/bCenter" style="@style/Tool" android:layout_width="match_parent" android:text="⊕ Centrar" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                        <Button android:id="@+id/bLayerUp" style="@style/Tool" android:layout_width="0dp" android:layout_weight="1" android:text="⬆" />
+                        <Button android:id="@+id/bLayerDown" style="@style/Tool" android:layout_width="0dp" android:layout_weight="1" android:text="⬇" />
+                    </LinearLayout>
                     <Button android:id="@+id/bRot" style="@style/Tool" android:layout_width="match_parent" android:text="↻ 90°" />
                     <Button android:id="@+id/bFlipH" style="@style/Tool" android:layout_width="match_parent" android:text="⇋ Reflejar" />
                     <Button android:id="@+id/bFlipV" style="@style/Tool" android:layout_width="match_parent" android:text="⇵ Reflejar" />
@@ -153,6 +172,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|start"
                 android:layout_margin="10dp"
+                android:layout_marginEnd="240dp"
                 android:visibility="gone">
 
                 <LinearLayout
@@ -162,12 +182,43 @@
                     <Button android:id="@+id/bZoomIn" style="@style/Tool" android:text="+" />
                     <Button android:id="@+id/bZoomOut" style="@style/Tool" android:text="−" />
                     <Button android:id="@+id/bFit" style="@style/Tool" android:text="⤢" />
-                    <Button android:id="@+id/bMulti" style="@style/Tool" android:text="▣ Selección múltiple" />
+                    <Button android:id="@+id/bMulti" style="@style/Tool" android:text="▣ Múltiple" />
                     <Button android:id="@+id/bAll" style="@style/Tool" android:text="Todo" />
                     <Button android:id="@+id/bUndo" style="@style/Tool" android:text="↶" />
                     <Button android:id="@+id/bRedo" style="@style/Tool" android:text="↷" />
                 </LinearLayout>
             </HorizontalScrollView>
+
+            <!-- flotante abajo a la derecha: siempre a mano, con el panel abierto o cerrado -->
+            <LinearLayout
+                android:id="@+id/cutBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="10dp"
+                android:gravity="end"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/bPanel"
+                    style="@style/Tool"
+                    android:text="▶" />
+
+                <Button
+                    android:id="@+id/bCut"
+                    android:layout_width="wrap_content"
+                    android:layout_height="60dp"
+                    android:backgroundTint="@color/accent"
+                    android:enabled="false"
+                    android:minWidth="200dp"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:text="Cortar"
+                    android:textAllCaps="false"
+                    android:textColor="#FF001F26"
+                    android:textSize="16sp" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/progressBox"
@@ -203,8 +254,9 @@
             </LinearLayout>
         </FrameLayout>
 
-        <!-- panel derecho -->
+        <!-- panel derecho (colapsable) -->
         <LinearLayout
+            android:id="@+id/sidePanel"
             android:layout_width="320dp"
             android:layout_height="match_parent"
             android:background="@color/panel"
@@ -399,17 +451,6 @@
                         android:text="Esquinas afiladas" />
                 </LinearLayout>
             </ScrollView>
-
-            <Button
-                android:id="@+id/bCut"
-                android:layout_width="match_parent"
-                android:layout_height="64dp"
-                android:layout_margin="10dp"
-                android:backgroundTint="@color/accent"
-                android:enabled="false"
-                android:text="Cortar"
-                android:textColor="#FF001F26"
-                android:textSize="17sp" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

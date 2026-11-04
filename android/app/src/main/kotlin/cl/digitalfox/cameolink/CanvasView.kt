@@ -70,7 +70,7 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         val sup = support ?: return
         val d = doc
         val sw = if (sup.usesMat) Support.MAT_MM else sup.w
-        val sh = if (sup.usesMat) Support.MAT_MM else sup.h
+        val sh = if (sup.usesMat) sup.matH else sup.h
         val b = d?.cutBBox()
         val ew = max(sw, b?.get(2) ?: 0.0).toFloat()
         val eh = max(sh, b?.get(3) ?: 0.0).toFloat()
@@ -107,14 +107,12 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         // mat (gris con cuadrícula de 1") y/o la hoja
         if (sup.usesMat) {
             fill.color = 0xFF34393B.toInt()
-            c.drawRect(sx(0.0), sy(0.0), sx(Support.MAT_MM), sy(Support.MAT_MM), fill)
+            c.drawRect(sx(0.0), sy(0.0), sx(Support.MAT_MM), sy(sup.matH), fill)
             stroke.color = 0xFF454C4F.toInt(); stroke.strokeWidth = 1f; stroke.pathEffect = null
             var g = 25.4
-            while (g < Support.MAT_MM) {
-                c.drawLine(sx(g), sy(0.0), sx(g), sy(Support.MAT_MM), stroke)
-                c.drawLine(sx(0.0), sy(g), sx(Support.MAT_MM), sy(g), stroke)
-                g += 25.4
-            }
+            while (g < Support.MAT_MM) { c.drawLine(sx(g), sy(0.0), sx(g), sy(sup.matH), stroke); g += 25.4 }
+            g = 25.4
+            while (g < sup.matH) { c.drawLine(sx(0.0), sy(g), sx(Support.MAT_MM), sy(g), stroke); g += 25.4 }
         }
         if (onPaper) {
             fill.color = 0xFFF3F2EE.toInt()
@@ -137,7 +135,7 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
         }
 
         // página del archivo si no coincide con el soporte
-        if (abs(d.pageW - sup.w) > 0.5 || abs(d.pageH - sup.h) > 0.5) {
+        if (d.kind != "nuevo" && (abs(d.pageW - sup.w) > 0.5 || abs(d.pageH - sup.h) > 0.5)) {
             stroke.color = if (onPaper) 0xFF8A877F.toInt() else 0xFF7D8A8F.toInt()
             stroke.strokeWidth = 1f; stroke.pathEffect = dash
             c.drawRect(sx(0.0), sy(0.0), sx(d.pageW), sy(d.pageH), stroke)
@@ -150,7 +148,8 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
                 fill.color = 0xFF111111.toInt()
                 for ((x, y, w, h) in Gpgl.regmarkRects(r)) c.drawRect(sx(x), sy(y), sx(x + w), sy(y + h), fill)
                 stroke.color = 0x40000000; stroke.strokeWidth = 1f; stroke.pathEffect = dash
-                c.drawRect(sx(r.inset), sy(r.inset), sx(r.pageW - r.inset), sy(r.pageH - r.bottom), stroke)
+                // área de trabajo: lo interno de las marcas, con 5 mm de resguardo
+                c.drawRect(sx(r.inset + 5), sy(r.inset + 5), sx(r.pageW - r.inset - 5), sy(r.pageH - r.bottom - 5), stroke)
                 stroke.pathEffect = null
             }
         }

@@ -75,11 +75,20 @@ class Item(
 data class Support(val id: String, val name: String, val w: Double, val h: Double, val mat: Boolean, val onMat: Boolean) {
     val usesMat get() = mat || onMat
     val label get() = "$name${if (onMat) " sobre mat" else ""} · ${nf(w)} × ${nf(h)} mm"
+    /** Alto del mat: 12x24 si el soporte lo es, o si la hoja pegada no cabe en el 12x12. */
+    val matH get() = if (id == "mat24" || (onMat && h > MAT_MM)) MAT24_MM else MAT_MM
+    /** TG de la máquina: 0 sin mat, 1 = 12x12, 2 = 12x24. */
+    val tg get() = if (!usesMat) 0 else if (matH > MAT_MM) 2 else 1
 
     companion object {
         const val MAT_MM = 304.8
+        const val MAT24_MM = 609.6
+        // Print & Cut admite hojas de hasta 30 × 61 cm con las marcas dentro (vinilos grandes)
+        const val PNC_MAX_W = 300.0
+        const val PNC_MAX_H = 610.0
         val PRESETS = listOf(
             Support("mat12", "Mat 12x12", MAT_MM, MAT_MM, mat = true, onMat = false),
+            Support("mat24", "Mat 12x24", MAT_MM, MAT24_MM, mat = true, onMat = false),
             Support("a4", "A4", 210.0, 297.0, mat = false, onMat = false),
             Support("carta", "Carta", 215.9, 279.4, mat = false, onMat = false),
         )
@@ -116,7 +125,8 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
         for (it in list) { val q = it.bbox(); b = doubleArrayOf(min(b[0], q[0]), min(b[1], q[1]), max(b[2], q[2]), max(b[3], q[3])) }
         return b
     }
-    fun cutBBox(): DoubleArray = bboxAll(items.filter { !it.isImage })
+    /** Caja de los cortes; ceros si todavía no hay ninguno (hoja en blanco). */
+    fun cutBBox(): DoubleArray = items.filter { !it.isImage }.let { if (it.isEmpty()) DoubleArray(4) else bboxAll(it) }
 
     /** Aplica M a la selección (sobre [base] si se pasa: así un gesto no acumula errores). */
     fun apply(mtx: Aff, base: Map<Int, Aff>? = null) {
@@ -133,19 +143,81 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
     }
     fun delete() { items.removeAll { keyOf(it) in sel }; sel.clear() }
     fun selectAll() { sel.clear(); items.forEach { sel += keyOf(it) } }
-    /** Centra la selección (su caja) en una hoja de w × h mm, a lo ancho y a lo alto. */
-    fun centerOn(w: Double, h: Double) {
+    /** Centra la selección (su caja) en el área de trabajo [x0,y0,x1,y1], a lo ancho y a lo alto. */
+    fun centerIn(area: DoubleArray) {
         val b = selBBox()
-        apply(A.tr(w / 2 - (b[0] + b[2]) / 2, h / 2 - (b[1] + b[3]) / 2))
+        apply(A.tr((area[0] + area[2]) / 2 - (b[0] + b[2]) / 2, (area[1] + area[3]) / 2 - (b[1] + b[3]) / 2))
+    }
+
+    // ---- agregar (las formas son LÍNEAS DE CORTE: no recortan la imagen, que se imprime completa
+    // y deja sangrado natural si el corte se corre)
+    private fun add(it: Item) { items += it; sel.clear(); sel += keyOf(it) }
+
+    fun addShape(kind: String, cx: Double, cy: Double, w: Double, h: Double, radius: Double = 6.0) =
+        add(Item(nextId++, false, Shapes.points(kind, cx, cy, w, h, radius), true, null, null))
+
+    /** Imagen de [wMm] de ancho centrada en (cx, cy), debajo de las líneas de corte. */
+    fun addImage(bmp: Bitmap, path: String?, cx: Double, cy: Double, wMm: Double) {
+        val hMm = wMm * bmp.height / bmp.width
+        add(Item(nextId++, true, DoubleArray(0), true, doubleArrayOf(wMm / 2, 0.0, 0.0, hMm / 2, cx, cy), bmp, imagePath = path))
+    }
+
+    // ---- capas: solo importan entre imágenes; las líneas de corte siempre se ven encima y el orden
+    // de corte lo decide Ordering
+    fun moveLayer(dir: Int) {
+        val slots = items.indices.filter { items[it].isImage }
+        val imgs = slots.map { items[it] }.toMutableList()
+        val picked = selItems().filter { it.isImage }.toSet()
+        val order = if (dir > 0) imgs.indices.reversed() else imgs.indices
+        for (i in order) {
+            val j = i + dir
+            if (j in imgs.indices && imgs[i] in picked && imgs[j] !in picked) { val t = imgs[i]; imgs[i] = imgs[j]; imgs[j] = t }
+        }
+        slots.forEachIndexed { k, s -> items[s] = imgs[k] }
+    }
+    val selHasImage get() = selItems().any { it.isImage }
+
+    // ---- rellenar: la selección es una unidad y se repite en grilla dentro del área de trabajo
+    class Fill(val cols: Int, val rows: Int, val w: Double, val h: Double) { val count get() = cols * rows }
+
+    fun fillPlan(area: DoubleArray, gap: Double): Fill {
+        val b = selBBox(); val w = b[2] - b[0]; val h = b[3] - b[1]
+        val g = max(0.0, gap)
+        fun fit(room: Double, size: Double) = if (size <= 0) 0 else Math.floor((room + g + 1e-9) / (size + g)).toInt()
+        return Fill(fit(area[2] - area[0], w), fit(area[3] - area[1], h), w, h)
+    }
+
+    fun fill(area: DoubleArray, gap: Double) {
+        val p = fillPlan(area, gap)
+        if (p.count !in 1..MAX_FILL) return
+        val g = max(0.0, gap)
+        val b = selBBox()
+        val base = selItems()
+        val orig = base.map { it.t.copyOf() }
+        val gx = area[0] + (area[2] - area[0] - (p.cols * p.w + (p.cols - 1) * g)) / 2
+        val gy = area[1] + (area[3] - area[1] - (p.rows * p.h + (p.rows - 1) * g)) / 2
+        val keys = mutableListOf<String>()
+        for (r in 0 until p.rows) for (c in 0 until p.cols) {
+            val mv = A.tr(gx + c * (p.w + g) - b[0], gy + r * (p.h + g) - b[1])
+            val gid = nextGroup++                                  // cada copia se mueve junta
+            base.forEachIndexed { k, it ->
+                val t = A.mul(mv, orig[k])
+                if (r == 0 && c == 0) { it.t = t; it.g = gid } else items += it.copyWith(nextId++, t, gid)
+            }
+            keys += "g$gid"
+        }
+        sel.clear(); sel += keys
     }
     fun rotate90() { val b = selBBox(); apply(A.rot(90.0, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2)) }
     fun flipH() { val b = selBBox(); apply(A.sc(-1.0, 1.0, (b[0] + b[2]) / 2, 0.0)) }
     fun flipV() { val b = selBBox(); apply(A.sc(1.0, -1.0, 0.0, (b[1] + b[3]) / 2)) }
 
-    /** La forma más chica bajo el dedo (así se elige un agujero dentro de su contorno). */
+    /** Lo que está bajo el dedo: la línea de corte más chica (así se elige un agujero dentro de su
+     *  contorno), y si no hay líneas, la imagen de más arriba: lo que se ve es lo que se toca. */
     fun hit(x: Double, y: Double, tolMm: Double): Item? {
         var best: Item? = null
         var bestA = Double.MAX_VALUE
+        var topImage: Item? = null
         for (it in items) {
             val p = it.world()
             var h = (it.closed || it.isImage) && pointInPoly(x, y, p)
@@ -155,11 +227,12 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
                 if (!h && it.isImage) h = segDist(x, y, p[6], p[7], p[0], p[1]) < tolMm
             }
             if (!h) continue
+            if (it.isImage) { topImage = it; continue }        // las de más arriba van después en la lista
             val b = it.bbox()
-            val area = (b[2] - b[0]) * (b[3] - b[1]) + if (it.isImage) 1e-3 else 0.0
-            if (area < bestA) { bestA = area; best = it }
+            val area = (b[2] - b[0]) * (b[3] - b[1])
+            if (area <= bestA) { bestA = area; best = it }
         }
-        return best
+        return best ?: topImage
     }
 
     /** Formas a cortar en orden de corte (interiores primero, recalculado con lo editado). */
@@ -170,6 +243,8 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
     }
 
     companion object {
+        const val MAX_FILL = 500      // más copias que esto es casi siempre un error y traba el visor
+
         fun pointInPoly(x: Double, y: Double, p: DoubleArray): Boolean {
             var inside = false
             val n = p.size / 2
@@ -224,6 +299,37 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
             d.items = (imageItems + d.items).toMutableList()
             return d
         }
+    }
+}
+
+/** Formas simples para encimar a las imágenes, como polilíneas cerradas en mm. */
+object Shapes {
+    const val CIRCLE = "circle"
+    const val RECT = "rect"
+    const val ROUND = "round"
+
+    fun points(kind: String, cx: Double, cy: Double, w: Double, h: Double, radius: Double): DoubleArray {
+        val p = ArrayList<Double>()
+        val x0 = cx - w / 2; val y0 = cy - h / 2
+        when (kind) {
+            CIRCLE -> for (i in 0..96) {
+                val a = i * Math.PI / 48
+                p += cx + w / 2 * cos(a); p += cy + h / 2 * sin(a)
+            }
+            RECT -> for ((x, y) in listOf(x0 to y0, x0 + w to y0, x0 + w to y0 + h, x0 to y0 + h, x0 to y0)) { p += x; p += y }
+            else -> {
+                val r = min(radius, min(w, h) / 2)
+                fun arc(ax: Double, ay: Double, a0: Double) {
+                    for (i in 0..12) { val a = a0 + i * Math.PI / 24; p += ax + r * cos(a); p += ay + r * sin(a) }
+                }
+                arc(x0 + w - r, y0 + r, -Math.PI / 2)
+                arc(x0 + w - r, y0 + h - r, 0.0)
+                arc(x0 + r, y0 + h - r, Math.PI / 2)
+                arc(x0 + r, y0 + r, Math.PI)
+                p += p[0]; p += p[1]
+            }
+        }
+        return p.toDoubleArray()
     }
 }
 

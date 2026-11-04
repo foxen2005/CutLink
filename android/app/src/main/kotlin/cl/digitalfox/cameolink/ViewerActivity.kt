@@ -68,6 +68,12 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
         v<Button>(R.id.btnOpen).setOnClickListener { pickFile() }
         v<Button>(R.id.btnOpen2).setOnClickListener { pickFile() }
+        v<Button>(R.id.btnBlank).setOnClickListener { newBlank() }
+        v<Button>(R.id.btnAdd).setOnClickListener { showAddMenu() }
+        v<Button>(R.id.bPanel).setOnClickListener { togglePanel() }
+        v<Button>(R.id.bFill).setOnClickListener { askFill() }
+        v<Button>(R.id.bLayerUp).setOnClickListener { edit { it.moveLayer(1) } }
+        v<Button>(R.id.bLayerDown).setOnClickListener { edit { it.moveLayer(-1) } }
         v<Button>(R.id.connPill).setOnClickListener { startActivity(Intent(this, MainActivity::class.java)) }
         v<Button>(R.id.supportChip).setOnClickListener { doc?.let { askSupport(it, keepCurrent = true) } }
         v<Button>(R.id.btnTools).setOnClickListener { showTools = !showTools; refreshPanel() }
@@ -91,7 +97,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<Button>(R.id.bFlipH).setOnClickListener { edit { it.flipH() } }
         v<Button>(R.id.bFlipV).setOnClickListener { edit { it.flipV() } }
         v<Button>(R.id.bDel).setOnClickListener { edit { it.delete() } }
-        v<Button>(R.id.bCenter).setOnClickListener { support?.let { s -> edit { it.centerOn(s.w, s.h) } } }
+        v<Button>(R.id.bCenter).setOnClickListener { edit { it.centerIn(workArea()) } }
 
         v<Switch>(R.id.swLock).setOnCheckedChangeListener { _, on -> canvas.lockAspect = on }
         for (id in listOf(R.id.fx, R.id.fy, R.id.fw, R.id.fh)) {
@@ -183,16 +189,21 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     /** Con archivos recientes muestra la lista; si no, va directo al selector de Android. */
     private fun pickFile() {
         val recents = recentFiles()
-        if (recents.isEmpty()) { browseFile(); return }
-        val labels = listOf("Buscar archivo…") + recents.map { it.second }
+        val labels = listOf("Buscar archivo…", "Hoja en blanco") + recents.map { it.second }
         AlertDialog.Builder(this)
             .setTitle("Abrir")
             .setItems(labels.toTypedArray()) { _, i ->
-                if (i == 0) browseFile() else openUri(Uri.parse(recents[i - 1].first))
+                when (i) {
+                    0 -> browseFile()
+                    1 -> newBlank()
+                    else -> openUri(Uri.parse(recents[i - 2].first))
+                }
             }
             .setNegativeButton("Cancelar", null)
             .show()
     }
+
+    private fun newBlank() = askSupport(Doc("Hoja en blanco", "nuevo", 0.0, 0.0, emptyList()), keepCurrent = false)
 
     private fun browseFile() {
         @Suppress("DEPRECATION")
@@ -206,6 +217,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_IMAGE && resultCode == RESULT_OK) data?.data?.let { addImage(it) }
         if (requestCode == REQ_OPEN && resultCode == RESULT_OK) data?.let { d ->
             d.data?.let { uri ->
                 // permiso duradero: sin esto, un archivo reciente no se podría reabrir después
@@ -280,27 +292,41 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         BitmapFactory.decodeFile(path, o)
         var sample = 1
         while (maxOf(o.outWidth, o.outHeight) / sample > maxPx) sample *= 2
-        return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+        val bmp = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+        // las fotos del celular guardan los píxeles acostados y la rotación en EXIF: BitmapFactory la ignora
+        val deg = try {
+            when (android.media.ExifInterface(path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                else -> 0
+            }
+        } catch (_: java.io.IOException) { 0 }
+        if (deg == 0) return bmp
+        val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(deg.toFloat()) }, true)
+        if (rotated !== bmp) bmp.recycle()
+        return rotated
     }
 
     // ------------------------------------------------------------------ soporte (siempre al abrir)
     private fun askSupport(d: Doc, keepCurrent: Boolean) {
         val pad = dp(16f).toInt()
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0) }
-        val group = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
-        val options = Support.PRESETS.map { "${it.name}\n${nf(it.w)} × ${nf(it.h)}" } + "Personalizado\nX × Y mm"
-        val radios = options.mapIndexed { i, t -> RadioButton(this).apply { id = 100 + i; text = t; setPadding(0, 0, pad, 0) } }
+        val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val customIdx = Support.PRESETS.size
+        val options = Support.PRESETS.map { "${it.name}  ·  ${nf(it.w)} × ${nf(it.h)} mm" } + "Personalizado  ·  X × Y mm"
+        val radios = options.mapIndexed { i, t -> RadioButton(this).apply { id = 100 + i; text = t } }
         radios.forEach { group.addView(it) }
         val custom = LinearLayout(this)
         val cw = EditText(this).apply { hint = "Ancho X (mm) · máx. 304,8"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText("200") }
         val ch = EditText(this).apply { hint = "Largo Y (mm)"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText("150") }
         custom.addView(cw, LinearLayout.LayoutParams(0, -2, 1f)); custom.addView(ch, LinearLayout.LayoutParams(0, -2, 1f))
-        val onMat = Switch(this).apply { text = "Pegado sobre el mat 12x12" }
+        val onMat = Switch(this).apply { text = "Pegado sobre el mat" }
         val fit = TextView(this).apply { setPadding(0, pad / 2, 0, 0) }
         box.addView(group); box.addView(custom); box.addView(onMat); box.addView(fit)
 
         val cur = support
-        val start = if (keepCurrent && cur != null) Support.PRESETS.indexOfFirst { it.id == cur.id }.let { if (it < 0) 3 else it } else 0
+        val start = if (keepCurrent && cur != null) Support.PRESETS.indexOfFirst { it.id == cur.id }.let { if (it < 0) customIdx else it } else 0
         if (keepCurrent && cur != null && cur.id == "custom") { cw.setText(cur.w.toString()); ch.setText(cur.h.toString()) }
         onMat.isChecked = keepCurrent && cur?.onMat == true
         group.check(100 + start)
@@ -317,20 +343,21 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         var dialog: AlertDialog? = null
         fun update() {
             val i = group.checkedRadioButtonId - 100
-            custom.visibility = if (i == 3) View.VISIBLE else View.GONE
-            onMat.visibility = if (i == 0) View.GONE else View.VISIBLE
+            custom.visibility = if (i == customIdx) View.VISIBLE else View.GONE
+            onMat.visibility = if (Support.PRESETS.getOrNull(i)?.mat == true) View.GONE else View.VISIBLE
             val s = current()
             val b = d.cutBBox()
             val err = when {
                 s == null || s.w <= 0 || s.h <= 0 -> "Escribe ancho y largo en mm"
                 s.w > Support.MAT_MM -> "El ancho máximo es 304,8 mm"
-                s.onMat && s.h > Support.MAT_MM -> "Sobre el mat el largo máximo es 304,8 mm"
+                s.onMat && s.h > Support.MAT24_MM -> "Sobre el mat el largo máximo es 609,6 mm (mat 12x24)"
                 else -> null
             }
             val out = if (s != null) d.items.count { !it.isImage && it.world().let { w -> (0 until w.size / 2).any { k -> w[2 * k] < -0.05 || w[2 * k + 1] < -0.05 || w[2 * k] > s.w + 0.05 || w[2 * k + 1] > s.h + 0.05 } } } else 0
             fit.text = when {
                 err != null -> "✕ $err"
                 out > 0 -> "✕ $out de ${d.items.count { !it.isImage }} trazados se salen (${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm)"
+                d.items.none { !it.isImage } -> "✓ Hoja de ${nf(s!!.w)} × ${nf(s.h)} mm"
                 else -> "✓ El diseño (${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm) cabe en ${nf(s!!.w)} × ${nf(s.h)} mm"
             }
             fit.setTextColor(if (err != null || out > 0) 0xFFFF9FD0.toInt() else 0xFF3CCF91.toInt())
@@ -351,7 +378,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val dlg = AlertDialog.Builder(this)
             .setTitle("¿Sobre qué vas a cortar?")
             .setMessage(d.name)
-            .setView(box)
+            .setView(android.widget.ScrollView(this).apply { addView(box) })     // con teclado abierto no cabe
             .setPositiveButton("Continuar") { _, _ -> current()?.let { showDoc(d, it) } }
             .setNegativeButton("Cancelar") { _, _ -> v<TextView>(R.id.fileName).text = doc?.name ?: "Ningún archivo abierto" }
             .create()
@@ -362,6 +389,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
     private fun showDoc(d: Doc, s: Support) {
         if (d !== doc || s != support) printedSignature = null     // otra hoja: lo impreso antes ya no vale
+        // imágenes agregadas al documento anterior: nadie más las usa
+        if (d !== doc) File(filesDir, "imagenes").listFiles()?.forEach { it.delete() }
         // marca inferior: 25 mm sin mat (rodillos), 10 con mat — mismo criterio que el panel
         if (s != support) v<EditText>(R.id.pInsetB).setText(if (s.usesMat) "10" else "25")
         doc = d
@@ -381,6 +410,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<View>(R.id.supportChip).visibility = if (has) View.VISIBLE else View.GONE
         v<View>(R.id.viewBar).visibility = if (has) View.VISIBLE else View.GONE
         v<View>(R.id.btnTools).visibility = if (has) View.VISIBLE else View.GONE
+        v<View>(R.id.btnAdd).visibility = if (has) View.VISIBLE else View.GONE
         v<Button>(R.id.btnTools).setTextColor(if (showTools) 0xFFF0B429.toInt() else 0xFFE6E6E6.toInt())
         v<Button>(R.id.bMulti).setTextColor(if (canvas.multi) 0xFFF0B429.toInt() else 0xFFE6E6E6.toInt())
         if (!has) return
@@ -392,6 +422,10 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<View>(R.id.editBar).visibility = if (selCount > 0 && showTools && !cutting) View.VISIBLE else View.GONE
         v<Button>(R.id.bGroup).isEnabled = selCount >= 2
         v<Button>(R.id.bUngroup).isEnabled = d.sel.any { it.startsWith("g") }
+        v<Button>(R.id.bLayerUp).isEnabled = d.selHasImage
+        v<Button>(R.id.bLayerDown).isEnabled = d.selHasImage
+        v<View>(R.id.cutBox).visibility = if (cutting) View.GONE else View.VISIBLE
+        v<View>(R.id.btnAdd).visibility = if (cutting) View.GONE else View.VISIBLE     // durante el corte no se edita
         v<Button>(R.id.bUndo).isEnabled = d.canUndo && !cutting
         v<Button>(R.id.bRedo).isEnabled = d.canRedo && !cutting
 
@@ -423,6 +457,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         var pncBlocks = false
         if (pnc) {
             if (s.mat) { pncProblems += "Elige el tamaño de la hoja impresa (A4, Carta o Personalizado, «sobre el mat» si corresponde): el mat 12x12 no se imprime."; pncBlocks = true }
+            else if (s.w > Support.PNC_MAX_W || s.h > Support.PNC_MAX_H) { pncProblems += "Print & Cut admite hasta 30 × 61 cm con las marcas dentro (tu hoja: ${nf(s.w / 10)} × ${nf(s.h / 10)} cm)."; pncBlocks = true }
             else if (r == null) { pncProblems += "Revisa los valores de las marcas (números en mm)"; pncBlocks = true }
             else {
                 val near = d.items.count { !it.isImage && it.world().let { w -> (0 until w.size / 2).any { k ->
@@ -442,11 +477,11 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         val out = shapes.count { canvas.isOutside(it) }
         val b = d.cutBBox()
         val len = shapes.sumOf { it.world().let { w -> (1 until w.size / 2).sumOf { k -> Math.hypot(w[2 * k] - w[2 * k - 2], w[2 * k + 1] - w[2 * k - 1]) } } }
-        val kind = when (d.kind) { "studio3" -> "Silhouette .studio3"; else -> d.kind.uppercase() }
+        val kind = when (d.kind) { "studio3" -> "Silhouette .studio3"; "nuevo" -> "Hoja en blanco"; else -> d.kind.uppercase() }
         val imgs = d.items.count { it.isImage }
         v<TextView>(R.id.docInfo).text = buildString {
             append("Tipo  $kind\n")
-            append("Página del archivo  ${nf(d.pageW)} × ${nf(d.pageH)} mm\n")
+            if (d.kind != "nuevo") append("Página del archivo  ${nf(d.pageW)} × ${nf(d.pageH)} mm\n")
             if (shapes.isNotEmpty()) append("Diseño  ${nf(b[2] - b[0])} × ${nf(b[3] - b[1])} mm\n")
             append("Trazados  ${shapes.size}\n")
             append("Largo de corte  ${nf(len / 10)} cm")
@@ -476,6 +511,127 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         d.pushUndo()
         block(d)
         onEdited()
+    }
+
+    /** Dónde se puede trabajar: toda la hoja, o lo interno de las marcas (con 5 mm de resguardo). */
+    private fun workArea(): DoubleArray {
+        val s = support ?: return DoubleArray(4)
+        val r = activeMarks()
+        return if (r != null) doubleArrayOf(r.inset + 5, r.inset + 5, s.w - r.inset - 5, s.h - r.bottom - 5)
+        else doubleArrayOf(0.0, 0.0, s.w, s.h)
+    }
+
+    /** Marcas que de verdad aplican: Print & Cut activo, sobre una hoja (el mat no se imprime) y valores válidos. */
+    private fun activeMarks(): Gpgl.Regmarks? =
+        if (v<Switch>(R.id.swPnc).isChecked && support?.mat == false) regmarks() else null
+
+    private fun togglePanel() {
+        val p = v<View>(R.id.sidePanel)
+        val open = p.visibility != View.VISIBLE
+        p.visibility = if (open) View.VISIBLE else View.GONE
+        v<Button>(R.id.bPanel).text = if (open) "▶" else "◀"
+        canvas.post { canvas.fit() }
+    }
+
+    private fun showAddMenu() {
+        if (doc == null) return
+        val labels = arrayOf("🖼  Imagen… (PNG / JPG)", "◯  Círculo", "▭  Rectángulo", "▢  Rectángulo redondeado")
+        AlertDialog.Builder(this)
+            .setTitle("Agregar")
+            .setItems(labels) { _, i ->
+                when (i) {
+                    0 -> @Suppress("DEPRECATION") startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+                    }, REQ_IMAGE)
+                    1 -> addShape(Shapes.CIRCLE)
+                    2 -> addShape(Shapes.RECT)
+                    3 -> addShape(Shapes.ROUND)
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /** Con algo seleccionado la forma cae centrada encima (lo normal: una imagen); si no, al centro del área. */
+    private fun addShape(kind: String) {
+        val d = doc ?: return
+        val hasSel = d.sel.isNotEmpty()
+        val a = if (hasSel) d.selBBox() else workArea()
+        val cx = (a[0] + a[2]) / 2; val cy = (a[1] + a[3]) / 2
+        val side = if (hasSel) minOf(a[2] - a[0], a[3] - a[1]) * 0.9 else 50.0
+        d.pushUndo()
+        if (kind == Shapes.CIRCLE) d.addShape(kind, cx, cy, side, side)
+        else if (hasSel) d.addShape(kind, cx, cy, (a[2] - a[0]) * 0.9, (a[3] - a[1]) * 0.9)
+        else d.addShape(kind, cx, cy, 60.0, 50.0)
+        onEdited()
+    }
+
+    /** Copia la imagen a la carpeta de la app (el original puede moverse) y la pone en el área de trabajo. */
+    private fun addImage(uri: Uri) = m.files.execute {
+        try {
+            val dir = File(filesDir, "imagenes").apply { mkdirs() }
+            val f = File(dir, "${System.currentTimeMillis()}_" + displayName(uri).replace(Regex("[^\\w.\\-]"), "_"))
+            contentResolver.openInputStream(uri)!!.use { inp -> f.outputStream().use { inp.copyTo(it) } }
+            val bmp = loadBitmap(f.absolutePath) ?: throw IllegalStateException("no es una imagen que Android pueda abrir")
+            runOnUiThread {
+                val d = doc ?: return@runOnUiThread
+                val a = workArea()
+                d.pushUndo()
+                d.addImage(bmp, f.absolutePath, (a[0] + a[2]) / 2, (a[1] + a[3]) / 2, minOf(80.0, (a[2] - a[0]) * 0.8))
+                onEdited()
+            }
+        } catch (e: Throwable) {
+            m.onLog("No se pudo agregar la imagen: ${e.message}")
+            m.toast("No se pudo agregar la imagen: ${e.message}")
+        }
+    }
+
+    /** Repite la selección en grilla hasta llenar el área de trabajo. */
+    private fun askFill() {
+        val d = doc ?: return
+        if (d.sel.isEmpty()) return
+        val pad = dp(16f).toInt()
+        val area = workArea()
+        val gap = EditText(this).apply {
+            hint = "Separación (mm)"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(m.prefs.getString("fill_gap", "3"))
+        }
+        val info = TextView(this).apply { setPadding(0, pad / 2, 0, 0) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0); addView(gap); addView(info) }
+        fun gapMm() = gap.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+        var dialog: AlertDialog? = null
+        fun update() {
+            val p = d.fillPlan(area, gapMm())
+            val aw = area[2] - area[0]; val ah = area[3] - area[1]
+            val ok = p.count in 1..Doc.MAX_FILL
+            info.text = when {
+                p.count == 0 -> "No cabe: el diseño (${nf(p.w)} × ${nf(p.h)} mm) es más grande que el área (${nf(aw)} × ${nf(ah)} mm)"
+                !ok -> "Serían ${p.count} copias: el máximo es ${Doc.MAX_FILL}. Sube la separación o agranda el diseño."
+                else -> "Caben ${p.count} copias (${p.cols} × ${p.rows}) de ${nf(p.w)} × ${nf(p.h)} mm en ${nf(aw)} × ${nf(ah)} mm"
+            }
+            info.setTextColor(if (ok) 0xFF3CCF91.toInt() else 0xFFFF9FD0.toInt())
+            dialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = ok
+        }
+        gap.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) = update()
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Rellenar el área de trabajo")
+            .setMessage(if (activeMarks() != null) "Área interna de las marcas de Print & Cut" else "Toda la hoja")
+            .setView(box)
+            .setPositiveButton("Rellenar") { _, _ ->
+                m.prefs.edit().putString("fill_gap", gap.text.toString()).apply()
+                d.pushUndo()
+                d.fill(area, gapMm())
+                onEdited()
+            }
+            .setNegativeButton("Cancelar", null)
+            .create()
+        dialog = dlg
+        dlg.setOnShowListener { update() }
+        dlg.show()
     }
 
     /** X, Y, ancho y alto exactos en mm (con o sin proporción). */
@@ -555,7 +711,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             speed = int(R.id.speed) ?: -1,
             pressure = int(R.id.pressure) ?: -1,
             passes = int(R.id.passes) ?: 1,
-            mat = if (support?.usesMat == true) 1 else 0,
+            mat = support?.tg ?: 0,
             tool = blade?.optInt("tool", 1) ?: 1,
             bladeOffsetMm = v<EditText>(R.id.offset).text.toString().replace(',', '.').toDoubleOrNull() ?: Gpgl.RATCHET_OFFSET_MM,
             sharpenCorners = v<Switch>(R.id.swSharpen).isChecked,
@@ -703,18 +859,21 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             Math.round(sup.w * k).toInt(), Math.round(sup.h * k).toInt(), 1).create())
         val c = page.canvas
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+        // de a una imagen a la vez: varias fotos a 3000 px no caben juntas en memoria. Las copias de
+        // «Rellenar» van seguidas y comparten archivo: se decodifica una vez y se reutiliza.
+        var lastPath: String? = null
+        var last: Bitmap? = null
         for ((world, path, preview) in images) {
-            // de a una imagen a la vez y liberándola: varias fotos a 3000 px no caben juntas en memoria
-            val full = path?.let { loadBitmap(it, 3000) }
-            val bmp = full ?: preview ?: continue
+            if (path != lastPath) { last?.recycle(); last = path?.let { loadBitmap(it, 3000) }; lastPath = path }
+            val bmp = last ?: preview ?: continue
             val px = doubleArrayOf(2.0 / bmp.width, 0.0, 0.0, 2.0 / bmp.height, -1.0, -1.0)
             val mt = A.mul(doubleArrayOf(k, 0.0, 0.0, k, 0.0, 0.0), A.mul(world, px))
             val mx = android.graphics.Matrix()
             mx.setValues(floatArrayOf(mt[0].toFloat(), mt[2].toFloat(), mt[4].toFloat(),
                 mt[1].toFloat(), mt[3].toFloat(), mt[5].toFloat(), 0f, 0f, 1f))
             c.drawBitmap(bmp, mx, paint)
-            full?.recycle()
         }
+        last?.recycle()
         paint.color = android.graphics.Color.BLACK
         if (r != null) for ((x, y, w, h) in Gpgl.regmarkRects(r))
             c.drawRect((x * k).toFloat(), (y * k).toFloat(), ((x + w) * k).toFloat(), ((y + h) * k).toFloat(), paint)
@@ -769,7 +928,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     /** Solo busca las marcas, sin cortar (como «Probar búsqueda» del panel). */
     private fun testSearch() {
         val r = regmarks() ?: run { toast("Revisa los valores de las marcas"); return }
-        val matTg = if (support?.usesMat == true) 1 else 0
+        val matTg = support?.tg ?: 0
         m.run("Probar búsqueda") {
             val ses = m.session
             ses.initialize()
@@ -786,5 +945,6 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
     companion object {
         private const val REQ_OPEN = 10
+        private const val REQ_IMAGE = 11
     }
 }
