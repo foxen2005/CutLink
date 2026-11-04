@@ -66,6 +66,45 @@ object Machine : LinkListener {
 
     val connected get() = session.link != null
 
+    val prefs get() = app.getSharedPreferences("cameolink", Context.MODE_PRIVATE)
+    private var autoTried = false
+
+    /**
+     * Al abrir la app, reconecta sola a la última Cameo (una vez por sesión, sin insistir: si está
+     * apagada queda "Sin conexión" y se conecta desde la pastilla). Sin búsqueda: se conecta directo
+     * a la dirección guardada, que es la clásica que ya funcionó.
+     */
+    fun autoConnect() {
+        if (autoTried || connected || spp != null || ble != null) return
+        autoTried = true
+        val addr = prefs.getString("last_device", null) ?: return
+        if (!adapter.isEnabled) return
+        if (android.os.Build.VERSION.SDK_INT >= 31 &&
+            app.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        onLog("Reconectando a la última Cameo ($addr)…")
+        connectSppAny(listOf(adapter.getRemoteDevice(addr)))
+    }
+
+    // Tiempo: se aprende de los cortes reales (mm de corte por segundo a cada velocidad). No se
+    // calcula con una fórmula porque no se conoce la velocidad real de la máquina en mm/s.
+    private fun learnRate(speed: Int, lengthMm: Double, seconds: Double) {
+        if (seconds < 3 || lengthMm <= 0) return
+        val key = "rate_$speed"
+        val old = prefs.getFloat(key, 0f)
+        val now = (lengthMm / seconds).toFloat()
+        prefs.edit().putFloat(key, if (old > 0) (old + now) / 2 else now).apply()
+        onLog("Medido: ${nf(lengthMm / 10)} cm en ${seconds.toInt()} s a velocidad $speed")
+    }
+
+    /** Segundos estimados, o null si todavía no hay ningún corte medido. */
+    fun estimateSeconds(speed: Int, lengthMm: Double): Int? {
+        val exact = prefs.getFloat("rate_$speed", 0f)
+        if (exact > 0) return (lengthMm / exact).toInt()
+        // sin medición a esa velocidad: se escala la más cercana (es proporcional solo en parte: es un "≈")
+        val near = (1..30).filter { prefs.getFloat("rate_$it", 0f) > 0 }.minByOrNull { Math.abs(it - speed) } ?: return null
+        return (lengthMm / (prefs.getFloat("rate_$near", 0f) * speed / near)).toInt()
+    }
+
     fun listen(o: Observer) { observers += o; o.onMachineChanged() }
     fun unlisten(o: Observer) { observers -= o }
 
@@ -177,6 +216,7 @@ object Machine : LinkListener {
         session.link = link
         ui.post { posX = 0.0; posY = 0.0 }
         setConn("Conectado: ${connLabel()}")
+        if (link is SppLink) prefs.edit().putString("last_device", link.address).apply()   // para reconectar sola
         if (link is BleLink) {
             val rx = link.suggestedRx
             if (rx != null) worker.execute {
@@ -345,6 +385,7 @@ object Machine : LinkListener {
                     report(0.02, "Buscando marcas de registro…")
                     offset = preCut()
                 }
+                val cutStart = System.currentTimeMillis()     // después de las marcas: se mide solo el corte
                 val cmds = Gpgl.plotCommands(paths, Gpgl.bboxOf(paths), s.passes, offset)
                 val total = cmds.size
                 for (i in cmds.indices step 64) {
@@ -387,6 +428,8 @@ object Machine : LinkListener {
                 if (warned) { setMachine("lista"); finish("La Cameo terminó lo que ya había recibido"); return@execute }
                 setMachine("lista")
                 onLog("Corte terminado: ${paths.size} trazados")
+                val mm = paths.sumOf { p -> p.zipWithNext().sumOf { (a, b) -> Math.hypot(b.first - a.first, b.second - a.second) } } * s.passes
+                learnRate(s.speed, mm, (System.currentTimeMillis() - cutStart) / 1000.0)
                 finish(null)
             } catch (e: Exception) {
                 onLog("Corte: ${e.message}")

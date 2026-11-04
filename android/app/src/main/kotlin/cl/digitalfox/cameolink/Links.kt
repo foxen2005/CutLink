@@ -260,7 +260,8 @@ class SppLink(
     private val adapter: BluetoothAdapter,
     private val listener: LinkListener,
 ) : CameoLink {
-    override val label = "Clásico ${device.name ?: device.address}"
+    override val label = "Clásico ${device.name?.replace(Regex("[^\\p{L}\\p{N} ._\\-]"), "")?.trim() ?: device.address}"
+    val address: String get() = device.address
     // Se asigna antes de connect(): así close() puede cortar un intento que todavía está esperando
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var closed = false

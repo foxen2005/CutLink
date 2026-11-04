@@ -103,11 +103,19 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             }
         }
 
-        // Print & Cut
-        v<Switch>(R.id.swPnc).setOnCheckedChangeListener { _, _ -> refreshPanel() }
+        // Print & Cut: los valores calibrados se recuerdan (nunca se vuelve a teclear lo mismo)
+        val prefs = m.prefs
+        val pncFields = mapOf(R.id.pInset to "p_inset", R.id.pThick to "p_thick", R.id.pSearchX to "p_sx",
+            R.id.pSearchY to "p_sy", R.id.pCalX to "p_cx", R.id.pCalY to "p_cy")
+        for ((id, key) in pncFields) prefs.getString(key, null)?.let { v<EditText>(id).setText(it) }
+        v<Switch>(R.id.swPnc).isChecked = prefs.getBoolean("p_on", false)
+        v<Switch>(R.id.swPnc).setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("p_on", on).apply(); refreshPanel() }
         v<RadioGroup>(R.id.pncMode).setOnCheckedChangeListener { _, _ -> refreshPanel() }
         val pncWatcher = object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) = refreshPanel()
+            override fun afterTextChanged(s: Editable?) {
+                prefs.edit().apply { for ((id, key) in pncFields) putString(key, v<EditText>(id).text.toString()) }.apply()
+                refreshPanel()
+            }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         }
@@ -138,7 +146,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         handleIntent(intent)
     }
 
-    override fun onResume() { super.onResume(); m.listen(this) }
+    override fun onResume() { super.onResume(); m.listen(this); m.autoConnect() }
     override fun onPause() { m.unlisten(this); super.onPause() }
 
     override fun onMachineChanged() {
@@ -172,7 +180,21 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     }
 
     // ------------------------------------------------------------------ abrir
+    /** Con archivos recientes muestra la lista; si no, va directo al selector de Android. */
     private fun pickFile() {
+        val recents = recentFiles()
+        if (recents.isEmpty()) { browseFile(); return }
+        val labels = listOf("Buscar archivo…") + recents.map { it.second }
+        AlertDialog.Builder(this)
+            .setTitle("Abrir")
+            .setItems(labels.toTypedArray()) { _, i ->
+                if (i == 0) browseFile() else openUri(Uri.parse(recents[i - 1].first))
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun browseFile() {
         @Suppress("DEPRECATION")
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -184,7 +206,28 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_OPEN && resultCode == RESULT_OK) data?.data?.let { openUri(it) }
+        if (requestCode == REQ_OPEN && resultCode == RESULT_OK) data?.let { d ->
+            d.data?.let { uri ->
+                // permiso duradero: sin esto, un archivo reciente no se podría reabrir después
+                try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
+                openUri(uri)
+            }
+        }
+    }
+
+    /** Últimos 8 archivos abiertos: (uri, nombre), lo más nuevo primero. */
+    private fun recentFiles(): List<Pair<String, String>> {
+        val a = JSONArray(m.prefs.getString("recents", "[]"))
+        val granted = contentResolver.persistedUriPermissions.map { it.uri.toString() }.toSet()
+        return List(a.length()) { a.getJSONObject(it) }.map { it.getString("uri") to it.getString("name") }
+            .filter { it.first in granted }       // sin permiso duradero no se puede reabrir
+    }
+
+    private fun addRecent(uri: Uri, name: String) {
+        val list = listOf(uri.toString() to name) + recentFiles().filter { it.first != uri.toString() }
+        val a = JSONArray()
+        list.take(8).forEach { (u, n) -> a.put(JSONObject().put("uri", u).put("name", n)) }
+        m.prefs.edit().putString("recents", a.toString()).apply()
     }
 
     private fun handleIntent(i: Intent?) {
@@ -220,7 +263,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 if (!js.optBoolean("ok")) throw IllegalStateException(js.optString("error"))
                 val d = Doc.fromJson(js) { p -> loadBitmap(p) }
                 m.onLog("Abierto $name: ${js.getJSONObject("stats")} en ${System.currentTimeMillis() - t0} ms")
-                runOnUiThread { askSupport(d, keepCurrent = false) }
+                runOnUiThread { addRecent(uri, name); askSupport(d, keepCurrent = false) }
             } catch (e: Throwable) {
                 m.onLog("No se pudo abrir: ${e.message}")
                 runOnUiThread {
@@ -468,6 +511,9 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 materials = mats; blades = bl
                 v<Spinner>(R.id.material).adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
                     mats.map { it.getString("name") + if (it.optBoolean("own")) " · propio" else "" })
+                // el último material usado
+                val last = m.prefs.getString("material", null)
+                mats.indexOfFirst { it.optString("id") == last }.takeIf { it >= 0 }?.let { v<Spinner>(R.id.material).setSelection(it) }
             }
         } catch (e: Throwable) {
             m.onLog("No se pudieron leer los materiales: ${e.message}")
@@ -482,6 +528,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     private fun applyMaterial(pos: Int) {
         val mat = materials.getOrNull(pos) ?: return
         val b = bladeOf(mat)
+        m.prefs.edit().putString("material", mat.optString("id")).apply()
         v<EditText>(R.id.speed).setText(mat.getInt("speed").toString())
         v<EditText>(R.id.pressure).setText(mat.getInt("pressure").toString())
         v<EditText>(R.id.passes).setText(mat.optInt("passes", 1).toString())
@@ -552,6 +599,10 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             "Largo de corte" to "${nf(len / 10)} cm",
             "Al terminar" to "vuelve al origen",
         )
+        // solo con datos reales de tus cortes; sin mediciones no se inventa un número
+        m.estimateSeconds(s.speed, len)?.let { sec ->
+            rows.add(rows.size - 1, "Tiempo aproximado" to if (sec < 90) "≈ $sec s" else "≈ ${(sec + 30) / 60} min")
+        }
         if (r != null) rows.add(1, "Print & Cut" to if (r.manual) "manual · cuchilla sobre el cuadrado"
             else "automático · búsqueda ${nf(r.searchX)} / ${nf(r.searchY)} mm · inset ${nf(r.inset)}/${nf(r.bottom)}")
         val go = {
