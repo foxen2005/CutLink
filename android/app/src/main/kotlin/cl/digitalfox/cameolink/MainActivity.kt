@@ -601,6 +601,7 @@ class MainActivity : Activity(), LinkListener {
 
     // ------------------------------------------------------------------ registro / UI
     override fun onLog(msg: String) {
+        android.util.Log.i("CameoLink", msg)     // también a logcat: se lee por adb sin tocar la pantalla
         val line = "${timeFmt.format(Date())}  $msg"
         ui.post {
             logLines.addFirst(line)

@@ -10,14 +10,23 @@ viewBox, Y hacia abajo (igual que el SVG).
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import math
 import os
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Iterator
 
-from svgelements import (
+# svgelements hace `import numpy` dentro de CADA punto que evalúa (CubicBezier.npoint, Arc…).
+# Sin numpy —la app Android— cada intento fallido recorre todo el path de importación (y Python
+# no recuerda los fallos): 4.500 puntos de un .studio3 = 5,4 s en la tablet. Marcarlo como
+# ausente hace que el ImportError sea inmediato. Donde numpy existe (el PC) no cambia nada.
+if "numpy" not in sys.modules and importlib.util.find_spec("numpy") is None:
+    sys.modules["numpy"] = None
+
+from svgelements import (  # noqa: E402
     SVG,
     Arc,
     Close,

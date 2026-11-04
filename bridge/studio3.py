@@ -484,12 +484,15 @@ def _color_hex(c) -> str:
     return c or "#e00000"
 
 
-def to_svg(doc: Studio3Doc, out_dir: Path) -> str:
+def to_svg(doc: Studio3Doc, out_dir: Path | None = None, page_frame: bool = True) -> str:
+    """page_frame: rect invisible del tamaño de la página. Illustrator lo usa para alinear y lo
+    borra; la app no lo quiere (no es un corte)."""
     w, h = doc.page_mm
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
-           f'width="{w}mm" height="{h}mm" viewBox="0 0 {w} {h}">',
-           # marco de página: el importador lo usa para alinear y luego lo elimina
-           f'<rect x="0" y="0" width="{w}" height="{h}" fill="none" stroke="none"/>']
+           f'width="{w}mm" height="{h}mm" viewBox="0 0 {w} {h}">']
+    if page_frame:
+        # marco de página: el importador lo usa para alinear y luego lo elimina
+        out.append(f'<rect x="0" y="0" width="{w}" height="{h}" fill="none" stroke="none"/>')
     # Las imágenes NO van en el SVG: el importador de Illustrator no resuelve los <image>
     # enlazados con file:/// y los descarta en silencio. Se escriben como PNG/JPEG aparte y
     # host.jsx las coloca nativamente con la matriz que devuelve convert().
@@ -547,6 +550,29 @@ def content_bbox(doc: Studio3Doc) -> tuple[float, float, float, float]:
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def write_images(doc: Studio3Doc, out: Path) -> list[dict]:
+    """Imágenes: archivo aparte + matriz (Illustrator y la app las colocan con la matriz)."""
+    out.mkdir(parents=True, exist_ok=True)
+    images = []
+    for im in doc.images:
+        fname = re.sub(r"[^\w\.\-]", "_", im.name)
+        (out / fname).write_bytes(im.data)
+        images.append({"file": str((out / fname).resolve()), "name": im.name,
+                       "matrix": [round(v, 5) for v in im.matrix]})
+    return images
+
+
+def check_page(doc: Studio3Doc) -> tuple[float, float, float, float]:
+    """Caja del contenido; avisa si se sale de la página de Studio."""
+    bbox = content_bbox(doc)
+    w, h = doc.page_mm
+    if bbox[0] < -0.5 or bbox[1] < -0.5 or bbox[2] > w + 0.5 or bbox[3] > h + 0.5:
+        doc.warnings.append(
+            f"El contenido ({bbox[2] - bbox[0]:.0f} × {bbox[3] - bbox[1]:.0f} mm) se sale de la "
+            f"página de Studio ({w:.0f} × {h:.0f} mm)")
+    return bbox
+
+
 def convert(path: str, out_dir: str | None = None) -> dict:
     src = Path(path)
     doc = parse(str(src))
@@ -554,21 +580,8 @@ def convert(path: str, out_dir: str | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     svg_path = out / (src.stem + ".svg")
     svg_path.write_text(to_svg(doc, out), encoding="utf-8")
-
-    # Imágenes: archivo aparte + matriz; Illustrator las coloca nativamente (host.jsx)
-    images = []
-    for im in doc.images:
-        fname = re.sub(r"[^\w\.\-]", "_", im.name)
-        (out / fname).write_bytes(im.data)
-        images.append({"file": str((out / fname).resolve()), "name": im.name,
-                       "matrix": [round(v, 5) for v in im.matrix]})
-
-    bbox = content_bbox(doc)
-    w, h = doc.page_mm
-    if bbox[0] < -0.5 or bbox[1] < -0.5 or bbox[2] > w + 0.5 or bbox[3] > h + 0.5:
-        doc.warnings.append(
-            f"El contenido ({bbox[2] - bbox[0]:.0f} × {bbox[3] - bbox[1]:.0f} mm) se sale de la "
-            f"página de Studio ({w:.0f} × {h:.0f} mm)")
+    images = write_images(doc, out)
+    bbox = check_page(doc)
     return {"ok": True, "svg_path": str(svg_path), "out_dir": str(out), "page_mm": list(doc.page_mm),
             "content_bbox_mm": [round(v, 3) for v in bbox],
             "stats": {"shapes": len(doc.shapes), "texts": len(doc.texts), "images": len(doc.images)},

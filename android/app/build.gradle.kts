@@ -28,11 +28,15 @@ android {
 val bridgePy = layout.buildDirectory.dir("bridgePy")
 val syncBridge by tasks.registering(Sync::class) {
     from("../../bridge") {
-        include("__init__.py", "svgpaths.py", "studio3.py", "ordering.py", "materials.json", "blades.json")
+        include("__init__.py", "svgpaths.py", "studio3.py", "ordering.py", "dxfpaths.py", "mobile.py",
+            "materials.json", "blades.json")
         into("bridge")
     }
-    // archivo de prueba para el paso 0 (studio3 real con 12 círculos)
-    from("../../bridge/tests/fixtures/circles_6x6.studio3") { into("cameo_samples") }
+    // archivos de prueba (uno por formato) para el botón "Probar Python"
+    from("../../bridge/tests/fixtures") {
+        include("circles_6x6.studio3", "square50.svg", "etiquetas_90x50.dxf")
+        into("cameo_samples")
+    }
     into(bridgePy)
 }
 
