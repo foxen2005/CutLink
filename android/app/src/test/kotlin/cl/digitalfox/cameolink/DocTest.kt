@@ -72,6 +72,23 @@ class DocTest {
     fun blankSheetBBoxIsZero() = assertEquals(0.0, doc().cutBBox()[2], 0.0)
 
     @Test
+    fun projectRoundTripKeepsPositionsGroupsAndIds() {
+        val d = doc()
+        d.addShape(Shapes.CIRCLE, 50.0, 50.0, 30.0, 30.0)
+        d.addShape(Shapes.RECT, 50.0, 50.0, 40.0, 40.0)
+        d.selectAll(); d.group()
+        d.apply(A.tr(12.5, -3.0))
+        val back = Doc.fromProject(org.json.JSONObject(d.toJson { it }.toString())) { null }
+        assertEquals(2, back.items.size)
+        assertTrue(back.items.all { it.g != null } && back.items[0].g == back.items[1].g)
+        val a = d.bboxAll(d.items); val b = back.bboxAll(back.items)
+        for (k in 0..3) assertEquals(a[k], b[k], 0.01)
+        // lo nuevo no choca con lo guardado
+        back.addShape(Shapes.RECT, 10.0, 10.0, 5.0, 5.0)
+        assertEquals(3, back.items.map { it.id }.toSet().size)
+    }
+
+    @Test
     fun matCodesForTheMachine() {
         assertEquals(1, Support.PRESETS.first { it.id == "mat12" }.tg)
         assertEquals(2, Support.PRESETS.first { it.id == "mat24" }.tg)

@@ -35,6 +35,13 @@
             android:text="＋ Agregar"
             android:visibility="gone" />
 
+        <Button
+            android:id="@+id/btnSave"
+            style="@style/Tool"
+            android:layout_marginStart="6dp"
+            android:text="💾 Guardar"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/fileName"
             android:layout_width="0dp"

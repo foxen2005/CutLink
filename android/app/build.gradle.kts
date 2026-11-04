@@ -11,8 +11,8 @@ android {
         applicationId = "cl.digitalfox.cameolink"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         // La Pad 8 Pro y los teléfonos actuales son arm64; x86_64 solo para el emulador
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -65,4 +65,5 @@ tasks.matching { it.name.contains("Python", ignoreCase = true) && it.name.starts
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")      // en los tests JVM org.json de Android es solo un esqueleto
 }

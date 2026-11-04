@@ -55,6 +55,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     private var editingSel: Set<String> = emptySet()
     // Print & Cut: posiciones al imprimir; si cambian, la hoja impresa ya no calza
     private var printedSignature: String? = null
+    private var openedFrom: File? = null      // carpeta del proyecto abierto, si vino de uno
 
     private fun <T : View> v(id: Int): T = findViewById(id)
 
@@ -70,6 +71,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<Button>(R.id.btnOpen2).setOnClickListener { pickFile() }
         v<Button>(R.id.btnBlank).setOnClickListener { newBlank() }
         v<Button>(R.id.btnAdd).setOnClickListener { showAddMenu() }
+        v<Button>(R.id.btnSave).setOnClickListener { askSave() }
         v<Button>(R.id.bPanel).setOnClickListener { togglePanel() }
         v<Button>(R.id.bFill).setOnClickListener { askFill() }
         v<Button>(R.id.bLayerUp).setOnClickListener { edit { it.moveLayer(1) } }
@@ -153,7 +155,12 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     }
 
     override fun onResume() { super.onResume(); m.listen(this); m.autoConnect() }
-    override fun onPause() { m.unlisten(this); super.onPause() }
+    override fun onPause() {
+        m.unlisten(this)
+        // guardado automático: si la app se cierra, en Abrir queda «Seguir con lo último»
+        if (doc?.items?.isNotEmpty() == true) saveProject(AUTOSAVE, quiet = true)
+        super.onPause()
+    }
 
     override fun onMachineChanged() {
         val pill = v<Button>(R.id.connPill)
@@ -188,16 +195,128 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     // ------------------------------------------------------------------ abrir
     /** Con archivos recientes muestra la lista; si no, va directo al selector de Android. */
     private fun pickFile() {
-        val recents = recentFiles()
-        val labels = listOf("Buscar archivo…", "Hoja en blanco") + recents.map { it.second }
+        val entries = mutableListOf<Pair<String, () -> Unit>>(
+            "Buscar archivo…" to { browseFile() },
+            "Hoja en blanco" to { newBlank() },
+        )
+        val last = File(projectsDir(), AUTOSAVE)
+        if (doc == null && File(last, "proyecto.json").exists()) entries += "↩ Seguir con lo último" to { openProject(last) }
+        if (savedProjects().isNotEmpty()) entries += "📁 Proyectos guardados…" to { showProjects() }
+        recentFiles().forEach { (u, n) -> entries += n to { openUri(Uri.parse(u)) } }
         AlertDialog.Builder(this)
             .setTitle("Abrir")
-            .setItems(labels.toTypedArray()) { _, i ->
-                when (i) {
-                    0 -> browseFile()
-                    1 -> newBlank()
-                    else -> openUri(Uri.parse(recents[i - 2].first))
-                }
+            .setItems(entries.map { it.first }.toTypedArray()) { _, i -> entries[i].second() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    // ------------------------------------------------------------------ proyectos
+    private fun projectsDir() = File(filesDir, "proyectos").apply { mkdirs() }
+
+    private fun savedProjects(): List<File> = projectsDir().listFiles().orEmpty()
+        .filter { it.name != AUTOSAVE && File(it, "proyecto.json").exists() }
+        .sortedByDescending { File(it, "proyecto.json").lastModified() }
+
+    private fun askSave() {
+        val d = doc ?: return
+        val pad = dp(16f).toInt()
+        val name = EditText(this).apply { hint = "Nombre del proyecto"; setText(d.name.substringBeforeLast('.')); setSelectAllOnFocus(true); singleLine() }
+        AlertDialog.Builder(this)
+            .setTitle("Guardar proyecto")
+            .setView(LinearLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(name, LinearLayout.LayoutParams(-1, -2)) })
+            .setPositiveButton("Guardar") { _, _ ->
+                val n = name.text.toString().trim().ifEmpty { "Proyecto" }
+                if (File(projectsDir(), projectDirName(n)).exists()) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Ya existe «$n»")
+                        .setMessage("¿Reemplazar ese proyecto?")
+                        .setPositiveButton("Reemplazar") { _, _ -> saveProject(n, quiet = false) }
+                        .setNegativeButton("Cancelar", null)
+                        .show()
+                } else saveProject(n, quiet = false)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /** Nombre de carpeta seguro; nunca el del guardado automático. */
+    private fun projectDirName(name: String): String =
+        name.replace(Regex("[^\\p{L}\\p{N} ._\\-]"), "_").trim('.', ' ', '_').ifEmpty { "Proyecto" }
+
+    private fun EditText.singleLine() { isSingleLine = true }
+
+    /** Guarda posiciones, formas, grupos y soporte, con copia de las imágenes (el original puede moverse). */
+    private fun saveProject(name: String, quiet: Boolean) {
+        val d = doc ?: return
+        val s = support ?: return
+        val dir = File(projectsDir(), if (quiet) AUTOSAVE else projectDirName(name))
+        val copies = LinkedHashMap<File, File>()
+        val keep = hashSetOf("proyecto.json")
+        val js = d.toJson { p ->
+            p?.let {
+                val src = File(it)
+                // dos imágenes con el mismo nombre en carpetas distintas no deben pisarse
+                val destName = if (src.parentFile == dir) src.name else "${Integer.toHexString(src.path.hashCode())}_${src.name}"
+                val dest = File(dir, destName)
+                if (src != dest) copies[src] = dest
+                keep += destName
+                destName
+            }
+        }
+        js.put("support", JSONObject().put("id", s.id).put("name", s.name).put("w", s.w).put("h", s.h).put("mat", s.mat).put("onMat", s.onMat))
+        // si el documento abierto vive en esta carpeta, sus imágenes pueden volver con Deshacer: no se limpia
+        val clean = dir != openedFrom
+        m.files.execute {
+            try {
+                dir.mkdirs()
+                for ((a, b) in copies) if (a.exists()) a.copyTo(b, overwrite = true)
+                File(dir, "proyecto.json").writeText(js.toString())
+                if (clean) dir.listFiles()?.filter { it.name !in keep }?.forEach { it.delete() }     // imágenes que ya no se usan
+                if (!quiet) { m.onLog("Proyecto guardado: $name"); m.toast("Guardado: $name") }
+            } catch (e: Exception) {
+                m.onLog("No se pudo guardar: ${e.message}")
+                if (!quiet) m.toast("No se pudo guardar: ${e.message}")
+            }
+        }
+    }
+
+    private fun openProject(dir: File) {
+        v<TextView>(R.id.fileName).text = "Abriendo…"
+        m.files.execute {
+            try {
+                val js = JSONObject(File(dir, "proyecto.json").readText())
+                val d = Doc.fromProject(js) { n -> File(dir, n).takeIf { it.exists() }?.let { f -> loadBitmap(f.path)?.let { it to f.path } } }
+                val o = js.getJSONObject("support")
+                val s = Support(o.getString("id"), o.getString("name"), o.getDouble("w"), o.getDouble("h"), o.getBoolean("mat"), o.getBoolean("onMat"))
+                runOnUiThread { showDoc(d, s); openedFrom = dir }
+            } catch (e: Exception) {
+                m.onLog("No se pudo abrir el proyecto: ${e.message}")
+                m.toast("No se pudo abrir el proyecto: ${e.message}")
+                runOnUiThread { v<TextView>(R.id.fileName).text = doc?.name ?: "Ningún archivo abierto" }
+            }
+        }
+    }
+
+    private fun showProjects() {
+        val list = savedProjects()
+        AlertDialog.Builder(this)
+            .setTitle("Proyectos guardados")
+            .setItems(list.map { it.name }.toTypedArray()) { _, i -> openProject(list[i]) }
+            .setNeutralButton("Borrar…") { _, _ -> deleteProject(list) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun deleteProject(list: List<File>) {
+        AlertDialog.Builder(this)
+            .setTitle("¿Cuál borrar?")
+            .setItems(list.map { it.name }.toTypedArray()) { _, i ->
+                AlertDialog.Builder(this)
+                    .setTitle("Borrar «${list[i].name}»")
+                    .setMessage("El proyecto y sus imágenes se eliminan de la app.")
+                    .setPositiveButton("Borrar") { _, _ -> list[i].deleteRecursively(); toast("Borrado") }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
             }
             .setNegativeButton("Cancelar", null)
             .show()
@@ -388,6 +507,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     }
 
     private fun showDoc(d: Doc, s: Support) {
+        if (d !== doc) openedFrom = null
         if (d !== doc || s != support) printedSignature = null     // otra hoja: lo impreso antes ya no vale
         // imágenes agregadas al documento anterior: nadie más las usa
         if (d !== doc) File(filesDir, "imagenes").listFiles()?.forEach { it.delete() }
@@ -426,6 +546,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<Button>(R.id.bLayerDown).isEnabled = d.selHasImage
         v<View>(R.id.cutBox).visibility = if (cutting) View.GONE else View.VISIBLE
         v<View>(R.id.btnAdd).visibility = if (cutting) View.GONE else View.VISIBLE     // durante el corte no se edita
+        v<View>(R.id.btnSave).visibility = if (cutting) View.GONE else View.VISIBLE
         v<Button>(R.id.bUndo).isEnabled = d.canUndo && !cutting
         v<Button>(R.id.bRedo).isEnabled = d.canRedo && !cutting
 
@@ -950,5 +1071,6 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     companion object {
         private const val REQ_OPEN = 10
         private const val REQ_IMAGE = 11
+        private const val AUTOSAVE = "_ultimo"
     }
 }

@@ -242,8 +242,50 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
         return idx.map { shapes[it] }
     }
 
+    /** Proyecto: todo lo editado. [imageRef] convierte la ruta de cada imagen en lo que se guarda. */
+    fun toJson(imageRef: (String?) -> String?): JSONObject {
+        val arr = org.json.JSONArray()
+        for (it in items) {
+            val o = JSONObject().put("id", it.id).put("image", it.isImage).put("closed", it.closed)
+                .put("t", org.json.JSONArray(it.t.toList()))
+            it.g?.let { g -> o.put("g", g) }
+            if (it.isImage) o.put("m", org.json.JSONArray(it.m!!.toList())).put("file", imageRef(it.imagePath))
+            else o.put("pts", org.json.JSONArray(it.pts.map { v -> Math.round(v * 1000) / 1000.0 }))
+            arr.put(o)
+        }
+        return JSONObject().put("version", 1).put("name", name).put("kind", kind)
+            .put("pageW", pageW).put("pageH", pageH).put("items", arr)
+    }
+
     companion object {
         const val MAX_FILL = 500      // más copias que esto es casi siempre un error y traba el visor
+
+        /** Abre un proyecto guardado con [toJson]; las imágenes que falten se saltan y se avisan. */
+        fun fromProject(js: JSONObject, loadImage: (String) -> Pair<Bitmap, String>?): Doc {
+            val missing = mutableListOf<String>()
+            val items = js.getJSONArray("items")
+            val parsed = mutableListOf<Item>()
+            fun arr(a: org.json.JSONArray) = DoubleArray(a.length()) { a.getDouble(it) }
+            for (i in 0 until items.length()) {
+                val o = items.getJSONObject(i)
+                val g = if (o.has("g")) o.getInt("g") else null
+                val t = arr(o.getJSONArray("t"))
+                if (o.getBoolean("image")) {
+                    val file = o.optString("file")
+                    val img = loadImage(file)
+                    if (img == null) { missing += file; continue }
+                    parsed += Item(o.getInt("id"), true, DoubleArray(0), true, arr(o.getJSONArray("m")), img.first, t, g, img.second)
+                } else {
+                    parsed += Item(o.getInt("id"), false, arr(o.getJSONArray("pts")), o.getBoolean("closed"), null, null, t, g)
+                }
+            }
+            val warn = if (missing.isEmpty()) emptyList() else listOf("Faltan ${missing.size} imágenes del proyecto")
+            val d = Doc(js.getString("name"), js.getString("kind"), js.getDouble("pageW"), js.getDouble("pageH"), warn)
+            d.items = parsed
+            d.nextId = (parsed.maxOfOrNull { it.id } ?: 0) + 1
+            d.nextGroup = (parsed.mapNotNull { it.g }.maxOrNull() ?: 0) + 1
+            return d
+        }
 
         fun pointInPoly(x: Double, y: Double, p: DoubleArray): Boolean {
             var inside = false

@@ -179,7 +179,7 @@
     <span class="spacer"></span>
     <button class="tbtn" id="btnPrint" hidden title="Imprime el diseño; con Print & Cut agrega las marcas">🖨 Imprimir</button>
     <button class="tbtn" id="bTools" aria-pressed="true" title="Mostrar u ocultar la barra de edición" hidden>✎ Herramientas</button>
-    <button class="tbtn" id="bPanel" aria-pressed="true" title="Mostrar u ocultar el panel lateral" hidden>☰ Panel</button>
+
     <button class="pill" id="connPill" title="Estado de la máquina"><span class="dot" id="connDot"></span><span id="connText">CAMEO 4-812231B · lista</span></button>
   </div>
 
@@ -222,6 +222,7 @@
         <button class="tbtn danger" id="bDel" title="Eliminar (Supr)">Eliminar</button>
       </div>
       <div class="ov br" id="ovScale" hidden><div><canvas id="scaleBar" width="120" height="18" style="position:static;width:120px;height:18px"></canvas><div id="scaleText" style="text-align:right"></div></div></div>
+      <button class="tbtn" id="bPanel" aria-pressed="true" title="Abrir o cerrar el panel lateral" hidden style="position:absolute;right:12px;bottom:76px;z-index:4;width:44px;padding:0">▶</button>
       <button class="btn primary" id="btnCut" disabled hidden>Cortar</button>
       <div class="progress" id="progress">
         <div class="ptext" id="ptext">Cortando…</div>
@@ -803,7 +804,7 @@ $("bTools").onclick = () => { ed.showBar = !ed.showBar; $("bTools").setAttribute
 // --- panel lateral colapsable (el botón de cortar queda flotando)
 $("bPanel").onclick = () => {
   const b = document.querySelector(".body"); b.classList.toggle("collapsed");
-  $("bPanel").setAttribute("aria-pressed", !b.classList.contains("collapsed"));
+  $("bPanel").textContent = b.classList.contains("collapsed") ? "◀" : "▶";
   resizeCanvas(); fitView();
 };
 $("btnPrint").onclick = () => toast(st.support?.mat ? "Elige el tamaño de la hoja (A4, Carta o Personalizado): el mat no se imprime"
