@@ -11,8 +11,10 @@ Formato deducido por ingeniería inversa sobre archivos reales (no hay documenta
 - Textos: objeto `create_textshape` + un registro "Cut Union" por carácter (fuente y la
   letra de 1 byte antes de su UUID) + caja del bloque (`01 03` + 4 esquinas). Sirven como
   metadato; la forma real son las listas anteriores.
-- Imágenes: objeto con el nombre de archivo, cuadrado unitario (−1…1) y 4 esquinas en
-  página; los PNG/JPEG viven en un pool al final, precedidos por `nombre_hash`.
+- Imágenes: objeto con el nombre de archivo, cuadrado unitario (−1…1), matriz LOCAL a su
+  grupo y 4 esquinas en página (con la transformación del grupo ya aplicada; de ahí se
+  corrige la matriz, ver _group_corrected); los PNG/JPEG viven en un pool al final,
+  precedidos por `nombre_hash`.
 - Miniatura PNG embebida (la primera imagen, pequeña).
 
 Uso: python -m bridge.studio3 archivo.studio3 --out carpeta
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import struct
 from dataclasses import dataclass, field
@@ -320,6 +323,78 @@ def _image_pool(data: bytes) -> dict[str, tuple[bytes, str, str]]:
     return pool
 
 
+UNIT_SQUARE = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0))
+QUAD_AFTER_MATRIX_MAX = 64   # las esquinas van 18 bytes después de la matriz; el objeto siguiente, ~780 después
+GROUP_MAX_ROT = math.radians(1.0)
+
+
+def _matrix_corners(mat) -> list[tuple[float, float]]:
+    """Esquinas en página del cuadrado unitario (−1…1) de una imagen."""
+    a, b, c, d, tx, ty = mat
+    return [(a * u + c * v + tx, b * u + d * v + ty) for u, v in UNIT_SQUARE]
+
+
+def _group_corrected(mat: tuple, corners: list[tuple[float, float]]) -> tuple[tuple, str | None]:
+    """La matriz de una imagen es local a su grupo: si el grupo se escaló o movió en Studio, la
+    imagen queda corrida (calendario iman grande: ×0,955 y hasta 5 mm). Las 4 esquinas que siguen
+    a la matriz sí están en página, así que se busca la afín G que lleva el cuadrado de la matriz a
+    esas esquinas y se devuelve (G∘M, None).
+
+    Solo se corrige el caso verificado con archivos reales: grupo escalado (uniforme) y movido,
+    SIN giro ni espejo. Las esquinas de un rectángulo admiten órdenes simétricos (180°, y 90° si es
+    cuadrado) que ajustan igual de bien, así que con el grupo girado no se puede saber la
+    orientación desde aquí: en ese caso, y si el grupo está reflejado o estirado, se deja la matriz
+    y se devuelve un aviso en vez de adivinar. (La matriz del grupo existe en el archivo —p. ej.
+    3x3 en 0x41AB del calendario— pero falta confirmar a qué registro pertenece.)"""
+    if len(corners) != 4:
+        return mat, None
+    a, b, c, d, tx, ty = mat
+    q = _matrix_corners(mat)
+    # Q = [q1-q0, q3-q0] como columnas; L = Cm·Q⁻¹ (afín exacta con 3 puntos, el 4.º verifica)
+    q0, q1, _, q3 = q
+    qa, qb = (q1[0] - q0[0], q1[1] - q0[1]), (q3[0] - q0[0], q3[1] - q0[1])
+    det_q = qa[0] * qb[1] - qb[0] * qa[1]
+    if abs(det_q) < 1e-9:
+        return mat, None
+    fits = False            # alguna afín lleva el cuadrado a las esquinas (aunque no sea corregible)
+    best = None
+    for shift in range(4):
+        for rev in (False, True):
+            order = [0, 3, 2, 1] if rev else [0, 1, 2, 3]
+            order = order[shift:] + order[:shift]
+            C0, C1, C2, C3 = (corners[i] for i in order)
+            ca, cb = (C1[0] - C0[0], C1[1] - C0[1]), (C3[0] - C0[0], C3[1] - C0[1])
+            # L = [ca cb] · [qa qb]⁻¹
+            l00 = (ca[0] * qb[1] - cb[0] * qa[1]) / det_q
+            l01 = (cb[0] * qa[0] - ca[0] * qb[0]) / det_q
+            l10 = (ca[1] * qb[1] - cb[1] * qa[1]) / det_q
+            l11 = (cb[1] * qa[0] - ca[1] * qb[0]) / det_q
+            gx, gy = C0[0] - (l00 * q0[0] + l01 * q0[1]), C0[1] - (l10 * q0[0] + l11 * q0[1])
+            q2 = q[2]
+            if math.hypot(l00 * q2[0] + l01 * q2[1] + gx - C2[0], l10 * q2[0] + l11 * q2[1] + gy - C2[1]) > 0.05:
+                continue
+            fits = True
+            if l00 * l11 - l01 * l10 <= 0:          # grupo reflejado
+                continue
+            sx, sy = math.hypot(l00, l10), math.hypot(l01, l11)
+            if abs(sx - sy) > 0.005 * max(sx, sy) or abs(l00 * l01 + l10 * l11) > 0.005 * sx * sy:
+                continue                            # grupo estirado (no es semejanza)
+            if abs(math.atan2(l10, l00)) > GROUP_MAX_ROT:
+                continue                            # grupo girado: orientación ambigua
+            best = (l00, l01, l10, l11, gx, gy)
+            break
+        if best:
+            break
+    if best is None:
+        why = ("está en un grupo girado, reflejado o estirado" if fits
+               else "tiene una caja que no coincide con la imagen")
+        return mat, f"{why}: su posición puede no coincidir con el corte, revísala"
+    l00, l01, l10, l11, gx, gy = best
+    return (l00 * a + l01 * b, l10 * a + l11 * b,
+            l00 * c + l01 * d, l10 * c + l11 * d,
+            l00 * tx + l01 * ty + gx, l10 * tx + l11 * ty + gy), None
+
+
 def _parse_images(data: bytes, pool: dict, shapes: list[PathShape], warnings: list[str]) -> list[ImageObj]:
     """Imágenes de dos formas:
     a) objeto imagen: token + cuadrado unitario + matriz 3x3 + caja de corte (`01 03`);
@@ -358,8 +433,12 @@ def _parse_images(data: bytes, pool: dict, shapes: list[PathShape], warnings: li
                     tx, ty, a, b, c, d = struct.unpack_from("<6f", data, mk - 24)
                     if all(_ok(v, 5000) for v in (tx, ty, a, b, c, d)):
                         mat = (a, b, c, d, tx, ty)
-                        q = data.find(QUAD_MARK, mk, seg_end)
+                        # solo las esquinas pegadas a ESTA matriz (no las del objeto siguiente)
+                        q = data.find(QUAD_MARK, mk, min(seg_end, mk + QUAD_AFTER_MATRIX_MAX))
                         corners = _quad_at(data, q + 5) if q >= 0 else []
+                        mat, note = _group_corrected(mat, corners)
+                        if note:
+                            warnings.append(f"Imagen {name} {note}")
         # b) imagen como relleno de una forma: la imagen cubre la caja del trazado siguiente
         if mat is None:
             shape = next((s for s in shapes if o < s.offset < o + 3000), None)
@@ -460,10 +539,9 @@ def content_bbox(doc: Studio3Doc) -> tuple[float, float, float, float]:
         xs += [p["x"] for p in s.points]
         ys += [p["y"] for p in s.points]
     for im in doc.images:
-        a, b, c, d, tx, ty = im.matrix
-        for u, v in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-            xs.append(a * u + c * v + tx)
-            ys.append(b * u + d * v + ty)
+        for x, y in _matrix_corners(im.matrix):
+            xs.append(x)
+            ys.append(y)
     if not xs:
         return (0.0, 0.0, 0.0, 0.0)
     return (min(xs), min(ys), max(xs), max(ys))
