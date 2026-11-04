@@ -45,6 +45,16 @@
 
   /* cuerpo */
   .body { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+  .body.collapsed { grid-template-columns: 1fr; }
+  .body.collapsed .side { display: none; }
+  #btnCut { position: absolute; right: 12px; bottom: 12px; height: 56px; min-width: 260px; font-size: 17px; z-index: 4;
+    box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+  .menu { position: absolute; top: 54px; left: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 6px; z-index: 12; display: none; min-width: 240px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .menu.show { display: block; }
+  .menu button { display: block; width: 100%; height: 44px; text-align: left; padding: 0 12px; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+  .menu button:hover { background: var(--panel2); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
   .viewer { position: relative; min-width: 0; background: #181818; touch-action: none; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
   canvas.dragging { cursor: grabbing; }
@@ -117,7 +127,7 @@
   .dlg header p { margin: 4px 0 0; color: var(--muted); }
   .dlg .content { padding: 12px 20px 16px; }
   .dlg footer { padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line); background: #222; }
-  .opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .opts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .opt { border: 1px solid var(--line); border-radius: 10px; padding: 12px 10px 10px; background: var(--panel2); cursor: pointer;
     text-align: center; display: grid; gap: 6px; justify-items: center; }
   .opt[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -164,9 +174,12 @@
   <div class="top">
     <span class="brand">Cameo Link</span>
     <button class="btn sm" id="btnOpen">Abrir archivo</button>
+    <button class="btn sm" id="bAdd" hidden>＋ Agregar</button>
     <span class="file-chip" id="fileChip">Ningún archivo abierto</span>
-    <button class="tbtn" id="bTools" aria-pressed="true" title="Mostrar u ocultar la barra de edición" hidden>✎ Herramientas</button>
     <span class="spacer"></span>
+    <button class="tbtn" id="btnPrint" hidden title="Imprime el diseño; con Print & Cut agrega las marcas">🖨 Imprimir</button>
+    <button class="tbtn" id="bTools" aria-pressed="true" title="Mostrar u ocultar la barra de edición" hidden>✎ Herramientas</button>
+    <button class="tbtn" id="bPanel" aria-pressed="true" title="Mostrar u ocultar el panel lateral" hidden>☰ Panel</button>
     <button class="pill" id="connPill" title="Estado de la máquina"><span class="dot" id="connDot"></span><span id="connText">CAMEO 4-812231B · lista</span></button>
   </div>
 
@@ -178,6 +191,7 @@
           <h2>Abre un diseño para cortar</h2>
           <div class="types">SVG · DXF · Silhouette .studio3</div>
           <button class="btn primary" id="btnOpen2">Abrir archivo</button>
+          <button class="btn" id="btnBlank">Hoja en blanco</button>
           <div class="note">También desde Archivos, Drive o WhatsApp con «Abrir con… Cameo Link»</div>
         </div>
       </div>
@@ -198,12 +212,17 @@
         <button class="tbtn" id="bGroup" title="Agrupar (Ctrl+G)">Agrupar</button>
         <button class="tbtn" id="bUngroup" title="Desagrupar (Ctrl+Shift+G)">Desagrupar</button>
         <button class="tbtn" id="bDup" title="Duplicar (Ctrl+D)">Duplicar</button>
+        <button class="tbtn" id="bFill" title="Copias hasta llenar el área de trabajo">▦ Rellenar</button>
+        <button class="tbtn" id="bCenter" title="Centrar en el área de trabajo">⊕ Centrar</button>
+        <button class="tbtn" id="bUp" title="Subir la imagen una capa">⬆</button>
+        <button class="tbtn" id="bDown" title="Bajar la imagen una capa">⬇</button>
         <button class="tbtn" id="bRot" title="Girar 90°">↻ 90°</button>
         <button class="tbtn" id="bFlipH" title="Reflejar horizontal">⇋</button>
         <button class="tbtn" id="bFlipV" title="Reflejar vertical">⇵</button>
         <button class="tbtn danger" id="bDel" title="Eliminar (Supr)">Eliminar</button>
       </div>
       <div class="ov br" id="ovScale" hidden><div><canvas id="scaleBar" width="120" height="18" style="position:static;width:120px;height:18px"></canvas><div id="scaleText" style="text-align:right"></div></div></div>
+      <button class="btn primary" id="btnCut" disabled hidden>Cortar</button>
       <div class="progress" id="progress">
         <div class="ptext" id="ptext">Cortando…</div>
         <div class="bar"><i id="pbar"></i></div>
@@ -293,10 +312,33 @@
           </details>
         </div>
       </div>
-      <div class="foot">
-        <button class="btn primary" id="btnCut" disabled>Cortar</button>
-      </div>
     </aside>
+  </div>
+
+  <!-- agregar -->
+  <div class="menu" id="addMenu">
+    <button data-add="img">🖼 Imagen… (PNG / JPG)</button>
+    <hr>
+    <button data-add="circle">◯ Círculo</button>
+    <button data-add="rect">▭ Rectángulo</button>
+    <button data-add="round">▢ Rectángulo redondeado</button>
+  </div>
+
+  <!-- rellenar hoja -->
+  <div class="scrim" id="fillScrim">
+    <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="fillTitle" style="width:440px">
+      <header><h2 id="fillTitle">Rellenar el área de trabajo</h2><p id="fillSub"></p></header>
+      <div class="content">
+        <div class="grid3">
+          <div class="field"><label>Separación (mm)</label><input type="number" id="fillGap" value="3" min="0" step="0.5"></div>
+        </div>
+        <div class="fit ok" id="fillInfo"></div>
+      </div>
+      <footer>
+        <button class="btn" id="fillCancel">Cancelar</button>
+        <button class="btn primary" id="fillOk">Rellenar</button>
+      </footer>
+    </div>
   </div>
 
   <!-- selector de archivos (simula el del sistema) -->
@@ -371,11 +413,14 @@ const BLADES = [{"id": "autoblade", "name": "AutoBlade (Cameo 4)", "type": "auto
 
 const SUPPORTS = [
   { id: "mat12", name: "Mat 12x12", w: 304.8, h: 304.8, mat: true, def: true },
+  { id: "mat24", name: "Mat 12x24", w: 304.8, h: 609.6, mat: true },
   { id: "a4", name: "A4", w: 210, h: 297 },
   { id: "carta", name: "Carta", w: 215.9, h: 279.4 },
   { id: "custom", name: "Personalizado" },
 ];
-const MAT = 304.8;
+const MAT = 304.8, MAT24 = 609.6, PNC_MAX_W = 300, PNC_MAX_H = 610;
+// alto del mat que se dibuja: 12x24 si el soporte lo es, o si la hoja pegada no cabe en el 12x12
+const matH = s => (s.id === "mat24" || (s.onMat && s.h > MAT)) ? MAT24 : MAT;
 const nf = (v, d = 1) => v.toLocaleString("es-CL", { minimumFractionDigits: d, maximumFractionDigits: d });
 const $ = id => document.getElementById(id);
 
@@ -388,13 +433,14 @@ const st = {
 // Print & Cut: misma geometría que cameoAddRegmarks() del panel (host.jsx)
 function regmarks() {
   const s = st.support, inset = +$("inset").value || 10, ib = +$("insetB").value || inset, t = +$("thick").value || 0.5;
-  return { inset, ib, t, w: s.w, h: s.h, area: [inset, inset, s.w - inset, s.h - ib] };
+  return { inset, ib, t, w: s.w, h: s.h, area: [inset + 5, inset + 5, s.w - inset - 5, s.h - ib - 5] };
 }
 // Problemas que impiden o arriesgan el Print & Cut (null = todo bien)
 function pncProblems() {
   if (!st.pnc || !st.doc) return [];
   const s = st.support, out = [];
-  if (s.mat) out.push("Elige el tamaño de la hoja impresa (A4, Carta o Personalizado, «sobre el mat» si corresponde): el mat 12x12 no se imprime.");
+  if (s.mat) out.push("Elige el tamaño de la hoja impresa (A4, Carta o Personalizado, «sobre el mat» si corresponde): el mat no se imprime.");
+  else if (s.w > PNC_MAX_W || s.h > PNC_MAX_H) out.push(`Print & Cut admite hasta 30 × 61 cm con las marcas dentro (tu hoja: ${nf(s.w / 10)} × ${nf(s.h / 10)} cm).`);
   else {
     const r = regmarks(), [x0, y0, x1, y1] = r.area;
     const n = st.doc.paths.filter(p => p.pts.some(([x, y]) => x < x0 + 5 || y < y0 + 5 || x > x1 - 5 || y > y1 - 5)).length;
@@ -442,7 +488,7 @@ function resizeCanvas() {
 function fitView() {
   if (!st.doc) return;
   const s = st.support;
-  const sw = s.onMat ? MAT : s.w, sh = s.onMat ? MAT : s.h;
+  const sw = s.onMat ? MAT : s.w, sh = s.onMat ? matH(s) : s.h;
   const b = bboxOf(st.doc.paths);
   const ew = Math.max(sw, b[2]), eh = Math.max(sh, b[3]);
   const k = Math.min((W - 60) / ew, (H - 110) / eh);
@@ -461,10 +507,12 @@ function render() {
   // mat (gris con cuadrícula de 1") o solo la hoja
   const onPaper = !sup.mat;
   if (sup.mat || sup.onMat) {
-    ctx.fillStyle = "#34393b"; ctx.fillRect(0, 0, MAT, MAT);
+    const mh = matH(sup);
+    ctx.fillStyle = "#34393b"; ctx.fillRect(0, 0, MAT, mh);
     ctx.strokeStyle = "#454c4f"; ctx.lineWidth = px(1);
-    for (let i = 25.4; i < MAT; i += 25.4) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, MAT); ctx.moveTo(0, i); ctx.lineTo(MAT, i); ctx.stroke(); }
-    ctx.strokeStyle = "#5b6468"; ctx.lineWidth = px(1.5); ctx.strokeRect(0, 0, MAT, MAT);
+    for (let i = 25.4; i < MAT; i += 25.4) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, mh); ctx.stroke(); }
+    for (let i = 25.4; i < mh; i += 25.4) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(MAT, i); ctx.stroke(); }
+    ctx.strokeStyle = "#5b6468"; ctx.lineWidth = px(1.5); ctx.strokeRect(0, 0, MAT, mh);
   }
   if (onPaper) {
     ctx.fillStyle = "#f3f2ee"; ctx.fillRect(0, 0, sup.w, sup.h);
@@ -751,6 +799,106 @@ $("bFlipV").onclick = () => action(() => { const [, y0, , y1] = selBB(); applyT(
 $("bDel").onclick = () => action(() => { ed.items = ed.items.filter(i => !ed.sel.has(keyOf(i))); ed.sel.clear(); rebuild(); });
 $("bUndo").onclick = undo; $("bRedo").onclick = redo;
 $("bTools").onclick = () => { ed.showBar = !ed.showBar; $("bTools").setAttribute("aria-pressed", ed.showBar); updateSelUI(); };
+
+// --- panel lateral colapsable (el botón de cortar queda flotando)
+$("bPanel").onclick = () => {
+  const b = document.querySelector(".body"); b.classList.toggle("collapsed");
+  $("bPanel").setAttribute("aria-pressed", !b.classList.contains("collapsed"));
+  resizeCanvas(); fitView();
+};
+$("btnPrint").onclick = () => toast(st.support?.mat ? "Elige el tamaño de la hoja (A4, Carta o Personalizado): el mat no se imprime"
+  : st.pnc ? "Abre la impresión de Android: diseño + marcas, sin líneas de corte" : "Abre la impresión de Android: el diseño sin marcas ni líneas de corte");
+
+// --- área de trabajo: toda la hoja, o lo interno de las marcas con Print & Cut
+function workArea() {
+  const s = st.support;
+  return st.pnc && !s.mat ? regmarks().area : [0, 0, s.w, s.h];
+}
+
+// --- agregar imagen y formas simples (las formas son LÍNEAS DE CORTE: la imagen se imprime completa)
+function shapePts(kind, w, h, r) {
+  const p = [];
+  if (kind === "circle") { for (let i = 0; i <= 72; i++) { const a = i * Math.PI / 36; p.push([w / 2 + w / 2 * Math.cos(a), h / 2 + h / 2 * Math.sin(a)]); } return p; }
+  if (kind === "rect") return [[0, 0], [w, 0], [w, h], [0, h], [0, 0]];
+  const arc = (cx, cy, a0) => { for (let i = 0; i <= 8; i++) { const a = a0 + i * Math.PI / 16; p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  arc(w - r, r, -Math.PI / 2); arc(w - r, h - r, 0); arc(r, h - r, Math.PI / 2); arc(r, r, Math.PI); p.push(p[0]);
+  return p;
+}
+function addItem(it) { pushUndo(); ed.items.push(it); ed.sel = new Set([keyOf(it)]); rebuild(); afterEdit(); render(); }
+let sampleImg = 0;
+$("bAdd").onclick = e => { e.stopPropagation(); $("addMenu").classList.toggle("show"); };
+addEventListener("click", () => $("addMenu").classList.remove("show"));
+$("addMenu").onclick = e => {
+  const k = e.target.closest("button")?.dataset.add; if (!k) return;
+  const [ax0, ay0, ax1, ay1] = workArea(), cx = (ax0 + ax1) / 2, cy = (ay0 + ay1) / 2;
+  if (k === "img") {
+    const pool = DOCS[1].src?.images || DOCS[1].images, im = pool[sampleImg++ % pool.length].img;
+    const w = 70, h = w * im.height / im.width;       // en la maqueta se usan imágenes del calendario
+    addItem({ id: ed.nid++, kind: "img", m: [w / 2, 0, 0, h / 2, cx, cy], img: im, T: ID, g: null });
+  } else {
+    const w = k === "circle" ? 50 : 60, h = 50;
+    const pts = shapePts(k, w, h, 6).map(([x, y]) => [x + cx - w / 2, y + cy - h / 2]);
+    addItem({ id: ed.nid++, kind: "path", pts, closed: true, T: ID, g: null });
+  }
+};
+
+// --- centrar en el área de trabajo
+$("bCenter").onclick = () => action(() => {
+  const [x0, y0, x1, y1] = selBB(), [ax0, ay0, ax1, ay1] = workArea();
+  applyT(tr((ax0 + ax1) / 2 - (x0 + x1) / 2, (ay0 + ay1) / 2 - (y0 + y1) / 2));
+});
+
+// --- capas: solo importan entre imágenes (las líneas de corte siempre se ven encima)
+function moveLayer(dir) {
+  const slots = ed.items.map((it, i) => it.kind === "img" ? i : -1).filter(i => i >= 0);
+  const imgs = slots.map(i => ed.items[i]), sel = new Set(selItems().filter(i => i.kind === "img"));
+  if (!sel.size) return;
+  pushUndo();
+  const idx = dir > 0 ? [...imgs.keys()].reverse() : [...imgs.keys()];
+  for (const i of idx) {
+    const j = i + dir;
+    if (j >= 0 && j < imgs.length && sel.has(imgs[i]) && !sel.has(imgs[j])) [imgs[i], imgs[j]] = [imgs[j], imgs[i]];
+  }
+  slots.forEach((s, k) => ed.items[s] = imgs[k]);
+  rebuild(); afterEdit(); render();
+}
+$("bUp").onclick = () => moveLayer(1);
+$("bDown").onclick = () => moveLayer(-1);
+
+// --- rellenar: la selección es una unidad y se repite en grilla dentro del área de trabajo
+function fillCalc() {
+  const [ax0, ay0, ax1, ay1] = workArea(), [x0, y0, x1, y1] = selBB();
+  const w = x1 - x0, h = y1 - y0, g = Math.max(0, +$("fillGap").value || 0), aw = ax1 - ax0, ah = ay1 - ay0;
+  return { w, h, g, x0, y0, ax0, ay0, aw, ah, cols: Math.floor((aw + g) / (w + g)), rows: Math.floor((ah + g) / (h + g)) };
+}
+function fillInfo() {
+  const c = fillCalc(), n = c.cols * c.rows, f = $("fillInfo");
+  f.className = "fit " + (n ? "ok" : "bad");
+  f.textContent = n ? `Caben ${n} copias (${c.cols} × ${c.rows}) de ${nf(c.w)} × ${nf(c.h)} mm en ${nf(c.aw)} × ${nf(c.ah)} mm`
+    : `No cabe: el diseño (${nf(c.w)} × ${nf(c.h)} mm) es más grande que el área (${nf(c.aw)} × ${nf(c.ah)} mm)`;
+  $("fillOk").disabled = !n;
+}
+$("bFill").onclick = () => { if (!ed.sel.size) return; $("fillSub").textContent = st.pnc ? "Área interna de las marcas de Print & Cut" : "Toda la hoja"; fillInfo(); $("fillScrim").classList.add("show"); };
+$("fillGap").oninput = fillInfo;
+$("fillCancel").onclick = () => $("fillScrim").classList.remove("show");
+$("fillOk").onclick = () => {
+  const c = fillCalc(); $("fillScrim").classList.remove("show");
+  pushUndo();
+  const base = selItems(), orig = base.map(i => i.T);
+  const gx = c.ax0 + (c.aw - (c.cols * c.w + (c.cols - 1) * c.g)) / 2, gy = c.ay0 + (c.ah - (c.rows * c.h + (c.rows - 1) * c.g)) / 2;
+  const keys = new Set();
+  for (let r = 0; r < c.rows; r++) for (let q = 0; q < c.cols; q++) {
+    const dx = gx + q * (c.w + c.g) - c.x0, dy = gy + r * (c.h + c.g) - c.y0, g = ed.ng++;   // cada copia es un grupo
+    base.forEach((it, k) => {
+      const T = mul(tr(dx, dy), orig[k]);
+      if (r === 0 && q === 0) { it.T = T; it.g = g; }
+      else ed.items.push({ ...it, id: ed.nid++, T, g });
+    });
+    keys.add("g" + g);
+  }
+  ed.sel = keys; rebuild(); afterEdit(); render();
+  toast(`${c.cols * c.rows} copias en el área de trabajo`);
+};
 $("bMulti").onclick = () => { ed.multi = !ed.multi; $("bMulti").setAttribute("aria-pressed", ed.multi); toast(ed.multi ? "Selección múltiple: toca formas o arrastra un recuadro" : "Selección simple"); };
 $("lock").onclick = () => { ed.lock = !ed.lock; $("lock").setAttribute("aria-checked", ed.lock); };
 // campos numéricos: posición y tamaño exactos en mm
@@ -790,6 +938,7 @@ function openPicker() {
 }
 function closePicker() { $("pickScrim").classList.remove("show"); $("picker").classList.remove("show"); }
 $("btnOpen").onclick = openPicker; $("btnOpen2").onclick = openPicker; $("pickClose").onclick = closePicker; $("pickScrim").onclick = closePicker;
+$("btnBlank").onclick = () => askSupport({ name: "Hoja en blanco", kind: "nuevo", page: [210, 297], paths: [], images: [], warnings: [] });
 $("pickList").onclick = e => { const b = e.target.closest("button"); if (!b) return; closePicker(); askSupport(DOCS[+b.dataset.i]); };
 
 // ---------------------------------------------------------------- soporte: SIEMPRE al abrir, Mat 12x12 por defecto
@@ -801,15 +950,15 @@ function askSupport(doc, keepCurrent = false) {
 }
 function renderOpts() {
   $("opts").innerHTML = SUPPORTS.map(s => {
-    const w = s.w || 200, h = s.h || 150, k = 64 / Math.max(304.8, 297);
+    const w = s.w || 200, h = s.h || 150, k = 64 / 304.8;
     return `<button class="opt" role="radio" aria-checked="${st.supSel === s.id}" data-id="${s.id}">
-      <span class="shape" style="width:${(s.id === "custom" ? 46 : w * k).toFixed(0)}px;height:${(s.id === "custom" ? 34 : h * k).toFixed(0)}px;${s.id === "custom" ? "border-style:dashed" : ""}"></span>
+      <span class="shape" style="width:${(s.id === "custom" ? 46 : w * k).toFixed(0)}px;height:${(s.id === "custom" ? 34 : Math.min(h * k, 96)).toFixed(0)}px;${s.id === "custom" ? "border-style:dashed" : ""}"></span>
       <span class="name">${s.name}</span>
       <span class="dims">${s.w ? `${nf(s.w)} × ${nf(s.h)} mm` : "X × Y mm"}</span>
       <span class="def">${s.def ? "por defecto" : ""}</span></button>`;
   }).join("");
   $("custom").classList.toggle("show", st.supSel === "custom");
-  $("onMatRow").style.display = st.supSel === "mat12" ? "none" : "flex";
+  $("onMatRow").style.display = st.supSel.startsWith("mat") ? "none" : "flex";
   $("onMat").setAttribute("aria-checked", st.onMat);
   updateFit();
 }
@@ -818,7 +967,7 @@ function updateFit() {
   const bw = b[2] - b[0], bh = b[3] - b[1];
   const errs = [];
   if (st.supSel === "custom" && (w <= 0 || w > 304.8)) errs.push("el ancho debe ser de 1 a 304,8 mm");
-  if (st.supSel !== "mat12" && st.onMat && h > MAT) errs.push(`sobre el mat el largo máximo es ${nf(MAT)} mm`);
+  if (!st.supSel.startsWith("mat") && st.onMat && h > MAT24) errs.push(`sobre el mat el largo máximo es ${nf(MAT24)} mm`);
   const n = st.pending.paths.filter(p => outside(p, w, h)).length;
   if (n) {
     const over = [b[2] - w > 0.05 && `${nf(b[2] - w)} mm a la derecha`, b[3] - h > 0.05 && `${nf(b[3] - h)} mm abajo`].filter(Boolean).join(" y ");
@@ -854,7 +1003,7 @@ $("supportChip").onclick = () => askSupport(st.doc, true);
 // ---------------------------------------------------------------- documento + panel
 function showDoc(refit = true) {
   const d = st.doc, s = st.support, b = bboxOf(d.paths);
-  $("empty").hidden = true; ["ovTop", "ovZoom", "ovScale", "bTools"].forEach(id => $(id).hidden = false);
+  $("empty").hidden = true; ["ovTop", "ovZoom", "ovScale", "bTools", "bAdd", "btnPrint", "bPanel", "btnCut"].forEach(id => $(id).hidden = false);
   $("fileChip").innerHTML = `<b>${d.name}</b>`;
   $("supportText").textContent = `${s.name}${s.onMat ? " sobre mat" : ""} · ${nf(s.w)} × ${nf(s.h)} mm`;
   const out = d.paths.filter(p => outside(p, s.w, s.h)).length;
