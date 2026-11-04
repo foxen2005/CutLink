@@ -28,6 +28,8 @@ import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -89,6 +91,22 @@ class MainActivity : Activity(), LinkListener {
             runMachine("Inicializar") {
                 session.initialize()
                 refreshStatus()
+            }
+        }
+
+        // Paso 0: el bridge (Python) corre dentro de la app. No necesita la máquina conectada.
+        findViewById<Button>(R.id.btnPython).setOnClickListener {
+            worker.execute {
+                try {
+                    val t0 = System.currentTimeMillis()
+                    if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                    val tStart = System.currentTimeMillis() - t0
+                    val r = Python.getInstance().getModule("cameo_probe").callAttr("run").toString()
+                    onLog("Python: arranque $tStart ms · total ${System.currentTimeMillis() - t0} ms")
+                    onLog("Python: $r")
+                } catch (e: Throwable) {
+                    onLog("Python falló: ${e.message}")
+                }
             }
         }
 

@@ -82,6 +82,12 @@
                 android:text="Inicializar" />
         </LinearLayout>
 
+        <Button
+            android:id="@+id/btnPython"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Probar Python (lector SVG / studio3)" />
+
         <TextView
             android:id="@+id/machineState"
             android:layout_width="match_parent"

@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("com.chaquo.python")
 }
 
 android {
@@ -10,8 +11,10 @@ android {
         applicationId = "cl.digitalfox.cameolink"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+        // La Pad 8 Pro y los teléfonos actuales son arm64; x86_64 solo para el emulador
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     compileOptions {
@@ -19,6 +22,39 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+// Solo la parte portable del bridge entra al APK: sin tests ni lo que depende de Windows
+// (usbprint/gpgl/jobs/server/cli) ni de OpenCV (imagetrace). Una sola fuente de verdad: ../../bridge.
+val bridgePy = layout.buildDirectory.dir("bridgePy")
+val syncBridge by tasks.registering(Sync::class) {
+    from("../../bridge") {
+        include("__init__.py", "svgpaths.py", "studio3.py", "ordering.py", "materials.json", "blades.json")
+        into("bridge")
+    }
+    // archivo de prueba para el paso 0 (studio3 real con 12 círculos)
+    from("../../bridge/tests/fixtures/circles_6x6.studio3") { into("cameo_samples") }
+    into(bridgePy)
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.14"
+        // mismo Python que el venv del bridge (3.14); el global C:\Python314 está roto
+        buildPython("C:/Users/DigitalFox/AppData/Local/Programs/Python/Python314/python.exe")
+        pip {
+            install("svgelements==1.9.6")
+        }
+    }
+    sourceSets {
+        getByName("main") {
+            srcDir("src/main/python")
+            srcDir(bridgePy)
+        }
+    }
+}
+
+tasks.matching { it.name.contains("Python", ignoreCase = true) && it.name.startsWith("merge") }
+    .configureEach { dependsOn(syncBridge) }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
