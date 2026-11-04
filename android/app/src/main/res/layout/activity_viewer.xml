@@ -40,6 +40,12 @@
             android:textColor="@color/muted" />
 
         <Button
+            android:id="@+id/btnPrint"
+            style="@style/Tool"
+            android:text="🖨 Imprimir"
+            android:visibility="gone" />
+
+        <Button
             android:id="@+id/btnTools"
             style="@style/Tool"
             android:text="✎ Herramientas"
@@ -133,6 +139,7 @@
                     <Button android:id="@+id/bGroup" style="@style/Tool" android:layout_width="match_parent" android:text="Agrupar" />
                     <Button android:id="@+id/bUngroup" style="@style/Tool" android:layout_width="match_parent" android:text="Desagrupar" />
                     <Button android:id="@+id/bDup" style="@style/Tool" android:layout_width="match_parent" android:text="Duplicar" />
+                    <Button android:id="@+id/bCenter" style="@style/Tool" android:layout_width="match_parent" android:text="⊕ Centrar en hoja" />
                     <Button android:id="@+id/bRot" style="@style/Tool" android:layout_width="match_parent" android:text="↻ 90°" />
                     <Button android:id="@+id/bFlipH" style="@style/Tool" android:layout_width="match_parent" android:text="⇋ Reflejar" />
                     <Button android:id="@+id/bFlipV" style="@style/Tool" android:layout_width="match_parent" android:text="⇵ Reflejar" />
@@ -325,9 +332,8 @@
 
                         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ajuste de búsqueda X · Y · calibración X · Y (mm)" android:textColor="@color/muted" android:textSize="12sp" />
 
-                        <!-- uno debajo del otro: lado a lado el texto no cabía en el panel y se cortaba -->
-                        <Button android:id="@+id/bPrint" style="@style/Tool" android:layout_width="match_parent" android:layout_marginTop="6dp" android:text="Imprimir con marcas" />
-                        <Button android:id="@+id/bSearch" style="@style/Tool" android:layout_width="match_parent" android:text="Probar búsqueda" />
+                        <!-- imprimir va en la barra superior (sirve con o sin marcas); aquí solo la prueba -->
+                        <Button android:id="@+id/bSearch" style="@style/Tool" android:layout_width="match_parent" android:layout_marginTop="6dp" android:text="Probar búsqueda" />
 
                         <TextView
                             android:id="@+id/pncWarn"
@@ -340,7 +346,7 @@
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Valores por defecto = los calibrados en tu Cameo (−11 / −8, inset 10, inferior 25 sin mat). Imprime al 100 % (tamaño real)."
+                            android:text="Con esto activado, 🖨 Imprimir agrega las marcas a la hoja. Valores por defecto = los calibrados en tu Cameo (−11 / −8, inset 10, inferior 25 sin mat). Imprime al 100 % (tamaño real)."
                             android:textColor="@color/muted"
                             android:textSize="12sp" />
                     </LinearLayout>

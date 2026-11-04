@@ -133,6 +133,11 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
     }
     fun delete() { items.removeAll { keyOf(it) in sel }; sel.clear() }
     fun selectAll() { sel.clear(); items.forEach { sel += keyOf(it) } }
+    /** Centra la selección (su caja) en una hoja de w × h mm, a lo ancho y a lo alto. */
+    fun centerOn(w: Double, h: Double) {
+        val b = selBBox()
+        apply(A.tr(w / 2 - (b[0] + b[2]) / 2, h / 2 - (b[1] + b[3]) / 2))
+    }
     fun rotate90() { val b = selBBox(); apply(A.rot(90.0, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2)) }
     fun flipH() { val b = selBBox(); apply(A.sc(-1.0, 1.0, (b[0] + b[2]) / 2, 0.0)) }
     fun flipV() { val b = selBBox(); apply(A.sc(1.0, -1.0, 0.0, (b[1] + b[3]) / 2)) }

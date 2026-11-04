@@ -91,6 +91,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         v<Button>(R.id.bFlipH).setOnClickListener { edit { it.flipH() } }
         v<Button>(R.id.bFlipV).setOnClickListener { edit { it.flipV() } }
         v<Button>(R.id.bDel).setOnClickListener { edit { it.delete() } }
+        v<Button>(R.id.bCenter).setOnClickListener { support?.let { s -> edit { it.centerOn(s.w, s.h) } } }
 
         v<Switch>(R.id.swLock).setOnCheckedChangeListener { _, on -> canvas.lockAspect = on }
         for (id in listOf(R.id.fx, R.id.fy, R.id.fw, R.id.fh)) {
@@ -112,7 +113,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         }
         for (id in listOf(R.id.pInset, R.id.pInsetB, R.id.pThick, R.id.pSearchX, R.id.pSearchY, R.id.pCalX, R.id.pCalY))
             v<EditText>(id).addTextChangedListener(pncWatcher)
-        v<Button>(R.id.bPrint).setOnClickListener { printWithMarks() }
+        v<Button>(R.id.btnPrint).setOnClickListener { printSheet() }
         v<Button>(R.id.bSearch).setOnClickListener { testSearch() }
 
         v<Spinner>(R.id.material).onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -388,7 +389,9 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             }
         }
         v<TextView>(R.id.pncWarn).apply { text = pncProblems.joinToString("\n"); visibility = if (pncProblems.isEmpty()) View.GONE else View.VISIBLE }
-        v<Button>(R.id.bPrint).isEnabled = pnc && !pncBlocks
+        // imprimir sirve con o sin marcas (diseño de fondo + corte encima); con Print & Cut agrega las marcas
+        v<View>(R.id.btnPrint).visibility = View.VISIBLE
+        v<Button>(R.id.btnPrint).isEnabled = !s.mat && !cutting && !(pnc && pncBlocks) && d.items.any { it.isImage }
         v<Button>(R.id.bSearch).isEnabled = pnc && !pncBlocks && !cutting
 
         // documento
@@ -565,7 +568,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 .setTitle("La hoja impresa ya no calza")
                 .setMessage("Moviste, giraste o cambiaste algo después de imprimir. El corte saldrá corrido respecto de lo impreso.\n\nVuelve a imprimir, o deshaz los cambios.")
                 .setPositiveButton("Cortar igual") { _, _ -> go() }
-                .setNeutralButton("Imprimir de nuevo") { _, _ -> printWithMarks() }
+                .setNeutralButton("Imprimir de nuevo") { _, _ -> printSheet() }
                 .setNegativeButton("Cancelar", null)
                 .show()
         } else go()
@@ -616,16 +619,18 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     private val printedSig: String?
         get() = printedSignature?.takeIf { printJob?.let { j -> !j.isCancelled && !j.isFailed } ?: false }
 
-    /** La hoja tal cual: imágenes + marcas, SIN las líneas de corte, al tamaño exacto del soporte.
-     *  El PDF se arma fuera del hilo de UI (las imágenes se releen con más resolución). */
-    private fun printWithMarks() {
+    /** La hoja tal cual: el diseño (imágenes) SIN las líneas de corte, al tamaño exacto del soporte.
+     *  Con Print & Cut activo se agregan las marcas; sin él es una hoja normal (diseño de fondo con el
+     *  corte encima, alineada al origen a mano). El PDF se arma fuera del hilo de UI. */
+    private fun printSheet() {
         val d = doc ?: return
         val sup = support ?: return
-        val r = regmarks() ?: run { toast("Revisa los valores de las marcas"); return }
-        if (sup.mat) { toast("Elige el tamaño de la hoja impresa (A4, Carta o Personalizado)"); return }
+        if (sup.mat) { toast("Elige el tamaño de la hoja a imprimir (A4, Carta o Personalizado)"); return }
+        if (d.items.none { it.isImage }) { toast("Este archivo no tiene imágenes para imprimir"); return }
+        val r = if (v<Switch>(R.id.swPnc).isChecked) regmarks() ?: run { toast("Revisa los valores de las marcas"); return } else null
         val sig = signature(d)
         val images = d.items.filter { it.isImage }.map { Triple(A.mul(it.t, it.m!!), it.imagePath, it.bitmap) }
-        v<Button>(R.id.bPrint).apply { isEnabled = false; text = "Preparando hoja…" }
+        v<Button>(R.id.btnPrint).apply { isEnabled = false; text = "Preparando…" }
         m.files.execute {
             try {
                 val pdfFile = buildPrintPdf(sup, r, images)
@@ -634,12 +639,12 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 m.onLog("No se pudo preparar la hoja: ${e.message}")
                 m.toast("No se pudo preparar la hoja: ${e.message}")
             } finally {
-                runOnUiThread { v<Button>(R.id.bPrint).text = "Imprimir con marcas"; refreshPanel() }
+                runOnUiThread { v<Button>(R.id.btnPrint).text = "🖨 Imprimir"; refreshPanel() }
             }
         }
     }
 
-    private fun buildPrintPdf(sup: Support, r: Gpgl.Regmarks, images: List<Triple<Aff, String?, Bitmap?>>): File {
+    private fun buildPrintPdf(sup: Support, r: Gpgl.Regmarks?, images: List<Triple<Aff, String?, Bitmap?>>): File {
         val k = 72.0 / 25.4                                                // mm -> puntos PDF
         val pdfFile = File(cacheDir, "print").apply { mkdirs() }.resolve("hoja-con-marcas.pdf")
         val pdf = android.graphics.pdf.PdfDocument()
@@ -660,7 +665,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             full?.recycle()
         }
         paint.color = android.graphics.Color.BLACK
-        for ((x, y, w, h) in Gpgl.regmarkRects(r))
+        if (r != null) for ((x, y, w, h) in Gpgl.regmarkRects(r))
             c.drawRect((x * k).toFloat(), (y * k).toFloat(), ((x + w) * k).toFloat(), ((y + h) * k).toFloat(), paint)
         pdf.finishPage(page)
         pdfFile.outputStream().use { pdf.writeTo(it) }
@@ -668,7 +673,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         return pdfFile
     }
 
-    private fun launchPrint(d: Doc, sup: Support, r: Gpgl.Regmarks, pdfFile: File, sig: String) {
+    private fun launchPrint(d: Doc, sup: Support, r: Gpgl.Regmarks?, pdfFile: File, sig: String) {
         val media = when (sup.id) {
             "a4" -> android.print.PrintAttributes.MediaSize.ISO_A4
             "carta" -> android.print.PrintAttributes.MediaSize.NA_LETTER
@@ -703,8 +708,10 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             }
         }
         printJob = getSystemService(android.print.PrintManager::class.java).print("Cameo Link · ${d.name}", adapter, attrs)
-        printedSignature = sig          // vale solo si el trabajo no se cancela ni falla (printedSig)
-        m.onLog("Hoja con marcas para imprimir: ${nf(sup.w)} × ${nf(sup.h)} mm, inset ${nf(r.inset)}/${nf(r.bottom)}")
+        // vale solo con marcas y si el trabajo no se cancela ni falla (printedSig)
+        printedSignature = if (r != null) sig else null
+        m.onLog("Hoja para imprimir: ${nf(sup.w)} × ${nf(sup.h)} mm" +
+            (r?.let { ", con marcas (inset ${nf(it.inset)}/${nf(it.bottom)})" } ?: ", sin marcas"))
         toast("Imprime al 100 % (tamaño real), sin ajustar a la página")
     }
 
