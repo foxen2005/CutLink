@@ -148,8 +148,8 @@ class CanvasView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = 
                 fill.color = 0xFF111111.toInt()
                 for ((x, y, w, h) in Gpgl.regmarkRects(r)) c.drawRect(sx(x), sy(y), sx(x + w), sy(y + h), fill)
                 stroke.color = 0x40000000; stroke.strokeWidth = 1f; stroke.pathEffect = dash
-                // área de trabajo: lo interno de las marcas, con 5 mm de resguardo
-                c.drawRect(sx(r.inset + 5), sy(r.inset + 5), sx(r.pageW - r.inset - 5), sy(r.pageH - r.bottom - 5), stroke)
+                // área de trabajo: al ras de las marcas (borde superior del cuadrado, exterior de las L)
+                c.drawRect(sx(r.inset), sy(r.inset), sx(r.pageW - r.inset), sy(r.pageH - r.bottom), stroke)
                 stroke.pathEffect = null
             }
         }

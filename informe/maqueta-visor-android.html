@@ -433,7 +433,7 @@ const st = {
 // Print & Cut: misma geometría que cameoAddRegmarks() del panel (host.jsx)
 function regmarks() {
   const s = st.support, inset = +$("inset").value || 10, ib = +$("insetB").value || inset, t = +$("thick").value || 0.5;
-  return { inset, ib, t, w: s.w, h: s.h, area: [inset + 5, inset + 5, s.w - inset - 5, s.h - ib - 5] };
+  return { inset, ib, t, w: s.w, h: s.h, area: [inset, inset, s.w - inset, s.h - ib] };
 }
 // Problemas que impiden o arriesgan el Print & Cut (null = todo bien)
 function pncProblems() {
@@ -443,8 +443,8 @@ function pncProblems() {
   else if (s.w > PNC_MAX_W || s.h > PNC_MAX_H) out.push(`Print & Cut admite hasta 30 × 61 cm con las marcas dentro (tu hoja: ${nf(s.w / 10)} × ${nf(s.h / 10)} cm).`);
   else {
     const r = regmarks(), [x0, y0, x1, y1] = r.area;
-    const n = st.doc.paths.filter(p => p.pts.some(([x, y]) => x < x0 + 5 || y < y0 + 5 || x > x1 - 5 || y > y1 - 5)).length;
-    if (n) out.push(`${n} trazados quedan sobre la zona de las marcas (a menos de 5 mm): la máquina podría no leerlas.`);
+    const n = st.doc.paths.filter(p => p.pts.some(([x, y]) => x < x0 || y < y0 || x > x1 || y > y1)).length;
+    if (n) out.push(`${n} trazados se salen del área de las marcas: la máquina podría no leerlas.`);
   }
   return out;
 }

@@ -460,9 +460,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             else if (s.w > Support.PNC_MAX_W || s.h > Support.PNC_MAX_H) { pncProblems += "Print & Cut admite hasta 30 × 61 cm con las marcas dentro (tu hoja: ${nf(s.w / 10)} × ${nf(s.h / 10)} cm)."; pncBlocks = true }
             else if (r == null) { pncProblems += "Revisa los valores de las marcas (números en mm)"; pncBlocks = true }
             else {
+                // fuera del área, o encima de una marca (con 1 mm de holgura): la máquina podría no leerla
+                val marks = Gpgl.regmarkRects(r)
                 val near = d.items.count { !it.isImage && it.world().let { w -> (0 until w.size / 2).any { k ->
-                    w[2 * k] < r.inset + 5 || w[2 * k + 1] < r.inset + 5 || w[2 * k] > r.pageW - r.inset - 5 || w[2 * k + 1] > r.pageH - r.bottom - 5 } } }
-                if (near > 0) pncProblems += "$near trazados quedan sobre la zona de las marcas (a menos de 5 mm): la máquina podría no leerlas."
+                    val x = w[2 * k]; val y = w[2 * k + 1]
+                    x < r.inset || y < r.inset || x > r.pageW - r.inset || y > r.pageH - r.bottom ||
+                        marks.any { (mx, my, mw, mh) -> x > mx - 1 && x < mx + mw + 1 && y > my - 1 && y < my + mh + 1 } } } }
+                if (near > 0) pncProblems += "$near trazados se salen del área de las marcas o tocan una marca: la máquina podría no leerlas."
                 if (printedSig != null && printedSig != signature(d)) pncProblems += "Moviste algo después de imprimir: la hoja impresa ya no calza con el corte."
             }
         }
@@ -513,11 +517,11 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         onEdited()
     }
 
-    /** Dónde se puede trabajar: toda la hoja, o lo interno de las marcas (con 5 mm de resguardo). */
+    /** Dónde se puede trabajar: toda la hoja, o lo interno de las marcas, al ras de ellas. */
     private fun workArea(): DoubleArray {
         val s = support ?: return DoubleArray(4)
         val r = activeMarks()
-        return if (r != null) doubleArrayOf(r.inset + 5, r.inset + 5, s.w - r.inset - 5, s.h - r.bottom - 5)
+        return if (r != null) doubleArrayOf(r.inset, r.inset, s.w - r.inset, s.h - r.bottom)
         else doubleArrayOf(0.0, 0.0, s.w, s.h)
     }
 
