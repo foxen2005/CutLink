@@ -19,6 +19,18 @@ object A {
         p[0] * q[0] + p[2] * q[1], p[1] * q[0] + p[3] * q[1],
         p[0] * q[2] + p[2] * q[3], p[1] * q[2] + p[3] * q[3],
         p[0] * q[4] + p[2] * q[5] + p[4], p[1] * q[4] + p[3] * q[5] + p[5])
+    /** Aplica [t] a una lista de puntos x0,y0,x1,y1… */
+    fun apply(t: Aff, pts: DoubleArray): DoubleArray {
+        val out = DoubleArray(pts.size)
+        var i = 0
+        while (i < pts.size) {
+            val x = pts[i]; val y = pts[i + 1]
+            out[i] = t[0] * x + t[2] * y + t[4]
+            out[i + 1] = t[1] * x + t[3] * y + t[5]
+            i += 2
+        }
+        return out
+    }
     fun tr(dx: Double, dy: Double): Aff = doubleArrayOf(1.0, 0.0, 0.0, 1.0, dx, dy)
     fun sc(sx: Double, sy: Double, cx: Double, cy: Double): Aff = doubleArrayOf(sx, 0.0, 0.0, sy, cx - sx * cx, cy - sy * cy)
     fun rot(deg: Double, cx: Double, cy: Double): Aff {
@@ -38,21 +50,22 @@ class Item(
     var t: Aff = A.I,
     var g: Int? = null,             // grupo: se selecciona/mueve junto
     val imagePath: String? = null,  // imagen original (para imprimir con más resolución que el visor)
+    val corner: Double? = null,     // rectángulo redondeado: radio en mm de [pts]
 ) {
-    fun copyWith(id: Int, t: Aff, g: Int?) = Item(id, isImage, pts, closed, m, bitmap, t, g, imagePath)
+    fun copyWith(id: Int, t: Aff, g: Int?) = Item(id, isImage, pts, closed, m, bitmap, t, g, imagePath, corner)
 
     /** Puntos en mm de página (con la edición aplicada). Imagen: sus 4 esquinas. */
     fun world(): DoubleArray {
-        val src = if (isImage) unitCorners(m!!) else pts
-        val out = DoubleArray(src.size)
-        var i = 0
-        while (i < src.size) {
-            val x = src[i]; val y = src[i + 1]
-            out[i] = t[0] * x + t[2] * y + t[4]
-            out[i + 1] = t[1] * x + t[3] * y + t[5]
-            i += 2
-        }
-        return out
+        val r = corner ?: return A.apply(t, if (isImage) unitCorners(m!!) else pts)
+        // rectángulo redondeado: se rehace a su nuevo tamaño, porque estirar los puntos deja las esquinas
+        // ovaladas. El radio crece con la escala menor: agrandar parejo lo agranda, estirar no lo deforma
+        val sx = hypot(t[0], t[1]); val sy = hypot(t[2], t[3])
+        if (sx == 0.0 || sy == 0.0) return A.apply(t, pts)
+        val b = bboxOf(pts)
+        val cx = (b[0] + b[2]) / 2; val cy = (b[1] + b[3]) / 2
+        val shape = Shapes.points(Shapes.ROUND, 0.0, 0.0, (b[2] - b[0]) * sx, (b[3] - b[1]) * sy, r * min(sx, sy))
+        return A.apply(doubleArrayOf(t[0] / sx, t[1] / sx, t[2] / sy, t[3] / sy,
+            t[0] * cx + t[2] * cy + t[4], t[1] * cx + t[3] * cy + t[5]), shape)
     }
 
     fun bbox(): DoubleArray = bboxOf(world())
@@ -159,7 +172,8 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
     private fun place(it: Item) { if (it.isImage) items.add(items.indexOfLast { i -> i.isImage } + 1, it) else items += it }
 
     fun addShape(kind: String, cx: Double, cy: Double, w: Double, h: Double, radius: Double = 6.0) =
-        add(Item(nextId++, false, Shapes.points(kind, cx, cy, w, h, radius), true, null, null))
+        add(Item(nextId++, false, Shapes.points(kind, cx, cy, w, h, radius), true, null, null,
+            corner = if (kind == Shapes.ROUND) min(radius, min(w, h) / 2) else null))
 
     /** Imagen de [wMm] de ancho centrada en (cx, cy): sobre las otras imágenes, bajo las líneas de corte. */
     fun addImage(bmp: Bitmap, path: String?, cx: Double, cy: Double, wMm: Double) {
@@ -188,32 +202,45 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
         return true
     }
 
-    // ---- rellenar: la selección es una unidad y se repite en grilla dentro del área de trabajo
-    class Fill(val cols: Int, val rows: Int, val w: Double, val h: Double) { val count get() = cols * rows }
+    // ---- rellenar: la selección es una unidad y se repite lo más posible dentro del área de trabajo
+    /** [cells]: dónde va cada copia, relativo al área. [rotated]: entran más giradas 90°. */
+    class Fill(val cells: List<DoubleArray>, val w: Double, val h: Double, val rotated: Boolean, val layout: String) {
+        val count get() = cells.size
+    }
+
+    /** Puntos de las líneas de corte de la selección y de sus imágenes; sin líneas, las imágenes mandan. */
+    private fun selOutlines(): Pair<DoubleArray, DoubleArray?> {
+        val (imgs, lines) = selItems().partition { it.isImage }
+        fun pts(l: List<Item>) = l.flatMap { it.world().asList() }.toDoubleArray()
+        return if (lines.isEmpty()) pts(imgs) to null else pts(lines) to imgs.takeIf { it.isNotEmpty() }?.let { pts(it) }
+    }
+
+    private fun quarterTurn() = selBBox().let { b -> A.rot(90.0, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2) }
 
     fun fillPlan(area: DoubleArray, gap: Double): Fill {
-        val b = selBBox(); val w = b[2] - b[0]; val h = b[3] - b[1]
-        val g = max(0.0, gap)
-        fun fit(room: Double, size: Double) = if (size <= 0) 0 else Math.floor((room + g + 1e-9) / (size + g)).toInt()
-        return Fill(fit(area[2] - area[0], w), fit(area[3] - area[1], h), w, h)
+        val (cut, ink) = selOutlines()
+        val w = area[2] - area[0]; val h = area[3] - area[1]
+        val turn = quarterTurn()
+        val plain = Packing.best(cut, ink, w, h, gap)
+        val turned = Packing.best(A.apply(turn, cut), ink?.let { A.apply(turn, it) }, w, h, gap)
+        return if (turned.cells.size > plain.cells.size) Fill(turned.cells, turned.w, turned.h, true, turned.layout)
+        else Fill(plain.cells, plain.w, plain.h, false, plain.layout)
     }
 
     fun fill(area: DoubleArray, gap: Double) {
         val p = fillPlan(area, gap)
         if (p.count !in 1..MAX_FILL) return
-        val g = max(0.0, gap)
-        val b = selBBox()
+        val turn = if (p.rotated) quarterTurn() else A.I
         val base = selItems()
+        val b = Item.bboxOf(A.apply(turn, base.flatMap { it.world().asList() }.toDoubleArray()))
         val orig = base.map { it.t.copyOf() }
-        val gx = area[0] + (area[2] - area[0] - (p.cols * p.w + (p.cols - 1) * g)) / 2
-        val gy = area[1] + (area[3] - area[1] - (p.rows * p.h + (p.rows - 1) * g)) / 2
         val keys = mutableListOf<String>()
-        for (r in 0 until p.rows) for (c in 0 until p.cols) {
-            val mv = A.tr(gx + c * (p.w + g) - b[0], gy + r * (p.h + g) - b[1])
+        p.cells.forEachIndexed { i, cell ->
+            val mv = A.mul(A.tr(area[0] + cell[0] - b[0], area[1] + cell[1] - b[1]), turn)
             val gid = nextGroup++                                  // cada copia se mueve junta
             base.forEachIndexed { k, it ->
                 val t = A.mul(mv, orig[k])
-                if (r == 0 && c == 0) { it.t = t; it.g = gid } else place(it.copyWith(nextId++, t, gid))
+                if (i == 0) { it.t = t; it.g = gid } else place(it.copyWith(nextId++, t, gid))
             }
             keys += "g$gid"
         }
@@ -253,6 +280,7 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
             it.g?.let { g -> o.put("g", g) }
             if (it.isImage) o.put("m", org.json.JSONArray(it.m!!.toList())).put("file", imageRef(it.imagePath))
             else o.put("pts", org.json.JSONArray(it.pts.map { v -> Math.round(v * 1000) / 1000.0 }))
+            it.corner?.let { r -> o.put("corner", r) }
             arr.put(o)
         }
         return JSONObject().put("version", 1).put("name", name).put("kind", kind)
@@ -278,7 +306,8 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
                     if (img == null) { missing += file; continue }
                     parsed += Item(o.getInt("id"), true, DoubleArray(0), true, arr(o.getJSONArray("m")), img.first, t, g, img.second)
                 } else {
-                    parsed += Item(o.getInt("id"), false, arr(o.getJSONArray("pts")), o.getBoolean("closed"), null, null, t, g)
+                    parsed += Item(o.getInt("id"), false, arr(o.getJSONArray("pts")), o.getBoolean("closed"), null, null, t, g,
+                        corner = if (o.has("corner")) o.getDouble("corner") else null)
                 }
             }
             val warn = if (missing.isEmpty()) emptyList() else listOf("Faltan ${missing.size} imágenes del proyecto")

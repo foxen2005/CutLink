@@ -485,7 +485,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="8dp"
                     android:fontFamily="@font/barlow_bold"
-                    android:minHeight="32dp"
                     android:text="Print &amp; Cut"
                     android:textSize="16sp" />
 

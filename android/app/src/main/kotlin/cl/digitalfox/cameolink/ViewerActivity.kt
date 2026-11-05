@@ -198,7 +198,6 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     }
 
     override fun onResume() { super.onResume(); m.resultOnScreen = true; m.toaster = { pill(it) }; m.listen(this); m.autoConnect() }
-    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); veil(!hasFocus) }
     override fun onPause() {
         m.resultOnScreen = false
         m.toaster = null
@@ -315,7 +314,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         if (doc == null && File(last, "proyecto.json").exists()) entries += "Seguir con lo último" to { openProject(last) }
         if (savedProjects().isNotEmpty()) entries += "Proyectos guardados…" to { showProjects() }
         recentFiles().forEach { (u, n) -> entries += n to { openUri(Uri.parse(u)) } }
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Abrir")
             .setItems(entries.map { it.first }.toTypedArray()) { _, i -> entries[i].second() }
             .setNegativeButton("Cancelar", null)
@@ -336,13 +335,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             hint = "Nombre del proyecto"; setText(d.name.substringBeforeLast('.')); singleLine()
         }
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Guardar proyecto")
             .setView(LinearLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(name, LinearLayout.LayoutParams(-1, dp(48f).toInt())) })
             .setPositiveButton("Guardar") { _, _ ->
                 val n = name.text.toString().trim().ifEmpty { "Proyecto" }
                 if (File(projectsDir(), projectDirName(n)).exists()) {
-                    AlertDialog.Builder(this)
+                    Sheet(this)
                         .setTitle("Ya existe «$n»")
                         .setMessage("¿Reemplazar ese proyecto?")
                         .setPositiveButton("Reemplazar") { _, _ -> saveProject(n, quiet = false) }
@@ -414,7 +413,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
 
     private fun showProjects() {
         val list = savedProjects()
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Proyectos guardados")
             .setItems(list.map { it.name }.toTypedArray()) { _, i -> openProject(list[i]) }
             .setNeutralButton("Borrar…") { _, _ -> deleteProject(list) }
@@ -423,10 +422,10 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     }
 
     private fun deleteProject(list: List<File>) {
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("¿Cuál borrar?")
             .setItems(list.map { it.name }.toTypedArray()) { _, i ->
-                AlertDialog.Builder(this)
+                Sheet(this)
                     .setTitle("Borrar «${list[i].name}»")
                     .setMessage("El proyecto y sus imágenes se eliminan de la app.")
                     .setPositiveButton("Borrar") { _, _ -> list[i].deleteRecursively(); toast("Borrado") }
@@ -514,7 +513,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 m.onLog("No se pudo abrir: ${e.message}")
                 runOnUiThread {
                     v<TextView>(R.id.fileName).text = doc?.name ?: "Ningún archivo abierto"
-                    AlertDialog.Builder(this).setTitle("No se pudo abrir").setMessage(e.message).setPositiveButton("OK", null).show()
+                    Sheet(this).setTitle("No se pudo abrir").setMessage(e.message).setPositiveButton("OK", null).show()
                 }
             }
         }
@@ -616,7 +615,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         }
         cw.addTextChangedListener(watcher); ch.addTextChangedListener(watcher)
 
-        val dlg = AlertDialog.Builder(this)
+        val dlg = Sheet(this)
             .setTitle("¿Sobre qué vas a cortar?")
             .setMessage(d.name)
             .setView(android.widget.ScrollView(this).apply { addView(box) })     // con teclado abierto no cabe
@@ -923,7 +922,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
     private fun showAddMenu() {
         if (doc == null) return
         val labels = arrayOf("Imagen (PNG / JPG)", "Círculo", "Rectángulo", "Rectángulo redondeado")
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Agregar")
             .setItems(labels) { _, i ->
                 when (i) {
@@ -973,13 +972,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         }
     }
 
-    /** Repite la selección en grilla hasta llenar el área de trabajo. */
+    /** Repite la selección hasta llenar el área de trabajo, con la distribución que más copias deja. */
     private fun askFill() {
         val d = doc ?: return
         if (d.sel.isEmpty()) return
         val pad = dp(24f).toInt()
         val area = workArea()
-        val (gapBox, gap) = numField("Separación (mm)", m.prefs.getString("fill_gap", "3") ?: "3")
+        val (gapBox, gap) = numField("Separación (mm)", m.prefs.getString("fill_sep", "3") ?: "3")
         val info = TextView(this).apply {
             setPadding(dp(12f).toInt(), dp(10f).toInt(), dp(12f).toInt(), dp(10f).toInt())
             typeface = resources.getFont(R.font.barlow_semibold); fontFeatureSettings = "tnum"
@@ -997,8 +996,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             val ok = p.count in 1..Doc.MAX_FILL
             info.text = when {
                 p.count == 0 -> "No cabe: el diseño (${nf(p.w)} × ${nf(p.h)} mm) es más grande que el área (${nf(aw)} × ${nf(ah)} mm)"
-                !ok -> "Serían ${p.count} copias: el máximo es ${Doc.MAX_FILL}. Sube la separación o agranda el diseño."
-                else -> "Caben ${p.count} copias (${p.cols} × ${p.rows}) de ${nf(p.w)} × ${nf(p.h)} mm en ${nf(aw)} × ${nf(ah)} mm"
+                !ok -> "Serían más de ${Doc.MAX_FILL} copias. Sube la separación o agranda el diseño."
+                else -> "Caben ${p.count} copias de ${nf(p.w)} × ${nf(p.h)} mm en ${p.layout}" + if (p.rotated) ", giradas 90°" else ""
             }
             noteStyle(info, bad = !ok)
             dialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = ok
@@ -1008,12 +1007,13 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
-        val dlg = AlertDialog.Builder(this)
+        val dlg = Sheet(this)
             .setTitle("Rellenar el área de trabajo")
             .setMessage(if (activeMarks() != null) "Área interna de las marcas de Print & Cut" else "Toda la hoja")
             .setView(box)
             .setPositiveButton("Rellenar") { _, _ ->
-                m.prefs.edit().putString("fill_gap", gap.text.toString()).apply()
+                // fill_gap guardaba valores de la grilla vieja: la separación vuelve a partir en 3 mm
+                m.prefs.edit().remove("fill_gap").putString("fill_sep", gap.text.toString()).apply()
                 d.pushUndo()
                 d.fill(area, gapMm())
                 onEdited()
@@ -1154,7 +1154,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             else "Automático · búsqueda ${nf(r.searchX, 0)} / ${nf(r.searchY, 0)} mm"
         val action = if (r != null) "Escanear y cortar" else "Cortar"
         val go = {
-            AlertDialog.Builder(this)
+            Sheet(this)
                 .setTitle("Cortar ${plural(paths.size)}")
                 .setMessage(d.name)
                 .setView(android.widget.ScrollView(this).apply { addView(readSheet(rows)) })
@@ -1165,7 +1165,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         }
         // Print & Cut: si se movió algo después de imprimir, la hoja ya no calza
         if (r != null && printedSig != null && printedSig != signature(d)) {
-            AlertDialog.Builder(this)
+            Sheet(this)
                 .setTitle("La hoja impresa ya no calza")
                 .setMessage("Moviste, giraste o cambiaste algo después de imprimir. El corte saldrá corrido respecto de lo impreso.\n\nVuelve a imprimir, o deshaz los cambios.")
                 .setPositiveButton("Cortar igual") { _, _ -> go() }

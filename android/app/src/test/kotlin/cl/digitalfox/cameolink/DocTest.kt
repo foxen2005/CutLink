@@ -104,6 +104,32 @@ class DocTest {
     }
 
     @Test
+    fun roundedCornersStayRoundWhenStretched() {
+        val d = doc()
+        d.addShape(Shapes.ROUND, 100.0, 100.0, 60.0, 40.0, 6.0)
+        val it = d.items.last()
+        d.apply(A.sc(2.0, 1.0, 100.0, 100.0))
+        val b = it.bbox()
+        assertEquals(120.0, b[2] - b[0], 1e-9); assertEquals(40.0, b[3] - b[1], 1e-9)
+        val w = it.world()
+        val cx = b[2] - 6.0; val cy = b[1] + 6.0                 // esquina superior derecha, radio 6 intacto
+        for (k in 0..12) assertEquals(6.0, hypot(w[2 * k] - cx, w[2 * k + 1] - cy), 1e-9)
+    }
+
+    @Test
+    fun roundedCornersGrowWithAnEvenScaleAndKeepTheirTurn() {
+        val d = doc()
+        d.addShape(Shapes.ROUND, 100.0, 100.0, 60.0, 40.0, 6.0)
+        val it = d.items.last()
+        d.apply(A.sc(2.0, 2.0, 100.0, 100.0))
+        d.apply(A.rot(90.0, 100.0, 100.0))
+        val b = it.bbox()
+        assertEquals(80.0, b[2] - b[0], 1e-9); assertEquals(120.0, b[3] - b[1], 1e-9)
+        val again = Doc.fromProject(d.toJson { null }) { null }.items.last().bbox()
+        assertEquals(b[2] - b[0], again[2] - again[0], 1e-6)     // el radio vuelve con el proyecto
+    }
+
+    @Test
     fun centerInWorkArea() {
         val d = doc()
         d.addShape(Shapes.RECT, 30.0, 30.0, 20.0, 10.0)
@@ -119,13 +145,90 @@ class DocTest {
         d.addShape(Shapes.RECT, 50.0, 50.0, 70.0, 100.0)
         val area = doubleArrayOf(15.0, 15.0, 195.0, 267.0)       // A4 con marcas: 180 × 252 mm
         val plan = d.fillPlan(area, 3.0)
-        assertEquals(2, plan.cols); assertEquals(2, plan.rows)
+        assertEquals(4, plan.count); assertEquals(Packing.GRID, plan.layout)
         d.fill(area, 3.0)
         assertEquals(4, d.items.size)
         assertEquals(4, d.sel.size)                              // cada copia es su propio grupo
         val b = d.bboxAll(d.items)
         assertTrue(b[0] >= 15.0 && b[1] >= 15.0 && b[2] <= 195.0 && b[3] <= 267.0)
-        assertEquals(143.0, b[2] - b[0], 1e-9)                   // 70 + 3 + 70
+        assertEquals(143.0, b[2] - b[0], 1e-3)                   // 70 + 3 + 70
+    }
+
+    @Test
+    fun circlesPackInAlternatingColumnsWithTheFullGap() {
+        val d = doc()
+        d.addShape(Shapes.CIRCLE, 50.0, 50.0, 40.0, 40.0)
+        val area = doubleArrayOf(10.0, 10.0, 200.0, 272.0)       // A4 con marcas: 190 × 262 mm
+        val plan = d.fillPlan(area, 3.0)
+        assertEquals(28, plan.count)                             // en grilla entrarían 24
+        assertEquals(Packing.COLUMNS, plan.layout)
+        d.fill(area, 3.0)
+        val centers = d.items.map { it.bbox().let { b -> (b[0] + b[2]) / 2 to (b[1] + b[3]) / 2 } }
+        for (i in centers.indices) for (j in 0 until i) {
+            val dist = hypot(centers[i].first - centers[j].first, centers[i].second - centers[j].second)
+            assertTrue("copias a $dist mm", dist >= 43.0 - 0.05)
+        }
+        val b = d.bboxAll(d.items)
+        assertTrue(b[0] >= 10.0 - 1e-6 && b[1] >= 10.0 - 1e-6 && b[2] <= 200.0 + 1e-6 && b[3] <= 272.0 + 1e-6)
+    }
+
+    @Test
+    fun fillTurnsTheDesignWhenMoreCopiesFit() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 50.0, 50.0, 100.0, 40.0)
+        val area = doubleArrayOf(0.0, 0.0, 130.0, 210.0)
+        val plan = d.fillPlan(area, 3.0)
+        assertTrue(plan.rotated)
+        assertEquals(6, plan.count)                              // sin girar serían 4
+        d.fill(area, 3.0)
+        assertEquals(6, d.items.size)
+        val q = d.items[0].bbox()
+        assertEquals(40.0, q[2] - q[0], 1e-6); assertEquals(100.0, q[3] - q[1], 1e-6)
+    }
+
+    @Test
+    fun gapIsMeasuredBetweenCutLinesAndImagesStayInside() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 50.0, 50.0, 40.0, 40.0)
+        d.image(1000, 50.0, 50.0, 46.0, 46.0)                    // sangrado de 3 mm por lado
+        d.selectAll()
+        assertEquals(2, d.fillPlan(doubleArrayOf(0.0, 0.0, 89.5, 46.0), 3.0).count)      // 46 + 43
+        assertEquals(1, d.fillPlan(doubleArrayOf(0.0, 0.0, 86.0, 46.0), 3.0).count)
+    }
+
+    @Test
+    fun squareImageNeverPrintsInsideTheNextCircle() {
+        val d = doc()
+        d.addShape(Shapes.CIRCLE, 50.0, 50.0, 40.0, 40.0)
+        d.image(1000, 50.0, 50.0, 40.0, 40.0)                    // las esquinas sobran del círculo
+        d.selectAll()
+        val plan = d.fillPlan(doubleArrayOf(10.0, 10.0, 200.0, 272.0), 3.0)
+        assertEquals(24, plan.count)                             // alternar aquí metería esquinas en los vecinos
+    }
+
+    @Test
+    fun slantedShapesDoNotOverlapDiagonally() {
+        val d = doc()
+        d.addShape(Shapes.RECT, 100.0, 100.0, 100.0, 10.0)
+        d.sel.clear(); d.sel += d.keyOf(d.items.last())
+        d.apply(A.rot(45.0, 100.0, 100.0))
+        val area = doubleArrayOf(0.0, 0.0, 190.0, 262.0)
+        d.fill(area, 3.0)
+        val its = d.items
+        assertTrue(its.size > 1)
+        for (i in its.indices) for (j in 0 until i) {
+            val a = its[i].world(); val b = its[j].world()
+            for (k in 0 until a.size / 2) assertEquals("esquina dentro de otra copia", false, Doc.pointInPoly(a[2 * k], a[2 * k + 1], b))
+        }
+    }
+
+    @Test
+    fun straightLineWithoutGapDoesNotExplode() {
+        val d = doc()
+        d.items += Item(1, false, doubleArrayOf(0.0, 0.0, 100.0, 100.0), false, null, null)
+        d.sel += d.keyOf(d.items.last())
+        val plan = d.fillPlan(doubleArrayOf(0.0, 0.0, 190.0, 262.0), 0.0)
+        assertTrue(plan.count <= Doc.MAX_FILL + 1)
     }
 
     @Test

@@ -3,7 +3,6 @@ package cl.digitalfox.cameolink
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanCallback
@@ -121,7 +120,6 @@ class MainActivity : Activity(), Machine.Observer {
 
     override fun onResume() { super.onResume(); m.toaster = { pill(it) }; m.listen(this) }
     override fun onPause() { m.toaster = null; m.unlisten(this); super.onPause() }
-    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); veil(!hasFocus) }
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
@@ -367,7 +365,7 @@ class MainActivity : Activity(), Machine.Observer {
         when (f.device.type) {
             BluetoothDevice.DEVICE_TYPE_LE -> m.connectBle(f.device)
             BluetoothDevice.DEVICE_TYPE_CLASSIC -> m.connectSpp(f.device)
-            else -> AlertDialog.Builder(this)
+            else -> Sheet(this)
                 .setTitle("¿Cómo conectar a ${f.name ?: f.device.address}?")
                 .setItems(arrayOf("Bluetooth clásico (puerto serie) · Cameo 4", "Bluetooth LE (GATT)")) { _, i ->
                     if (i == 0) m.connectSpp(f.device) else m.connectBle(f.device)
@@ -388,7 +386,7 @@ class MainActivity : Activity(), Machine.Observer {
             return
         }
         val labels = w.map { "${shortUuid(it.service.uuid)} / ${shortUuid(it.uuid)}\n[${propsText(it.properties)}]" }
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Canal TX (escribir)")
             .setItems(labels.toTypedArray()) { _, i ->
                 m.selectTx(link, w[i])
@@ -400,7 +398,7 @@ class MainActivity : Activity(), Machine.Observer {
     private fun pickRx(link: BleLink) {
         val n = link.notifiable
         val labels = listOf("(ninguno)") + n.map { "${shortUuid(it.service.uuid)} / ${shortUuid(it.uuid)}\n[${propsText(it.properties)}]" }
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Canal RX (respuestas)")
             .setItems(labels.toTypedArray()) { _, i -> m.selectRx(link, if (i == 0) null else n[i - 1]) }
             .show()
@@ -448,7 +446,7 @@ class MainActivity : Activity(), Machine.Observer {
         if (!m.connected) { toast("Primero conecta la Cameo"); return }
         val s = readSettings() ?: return
         val mat = listOf("sin mat", "mat 12x12", "mat 12x24")[s.mat]
-        AlertDialog.Builder(this)
+        Sheet(this)
             .setTitle("Cortar cuadrado 20 mm")
             .setMessage("Posición  X10 Y10 mm\nVelocidad  ${s.speed}\nPresión  ${s.pressure}\nSoporte  $mat\nCuchilla  trinquete · offset 0,25 mm")
             .setPositiveButton("Cortar") { _, _ -> m.cut(s, listOf(Gpgl.square(10.0, 10.0, 20.0)))?.let { toast(it) } }

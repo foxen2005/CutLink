@@ -79,7 +79,7 @@
         <item name="android:buttonBarNeutralButtonStyle">@style/DialogNegative</item>
     </style>
 
-    <!-- El velo lo pone la pantalla (Ui.kt): el atenuado del sistema solo sabe ser negro -->
+    <!-- El velo lo pone Sheet (Ui.kt): el atenuado del sistema solo sabe ser negro -->
     <style name="DialogBar">
         <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">14dp</item>
@@ -203,6 +203,9 @@
         <item name="android:textSize">12sp</item>
         <item name="android:drawablePadding">0dp</item>
         <item name="android:maxLines">1</item>
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">9sp</item>
+        <item name="android:autoSizeMaxTextSize">12sp</item>
     </style>
 
     <style name="Primary" parent="AppButton">
@@ -255,7 +258,7 @@
 
     <style name="Seg">
         <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_height">48dp</item>
         <item name="android:layout_weight">1</item>
         <item name="android:background">@drawable/bg_seg_item</item>
         <item name="android:button">@null</item>

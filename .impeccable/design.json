@@ -1,0 +1,594 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-05T01:21:45Z",
+  "title": "Design System: Cameo Link",
+  "extensions": {
+    "colorMeta": {
+      "cyan": {
+        "role": "primary",
+        "displayName": "Cian de Plancha",
+        "canonical": "#00B8D9",
+        "tonalRamp": [
+          "#000E13",
+          "#012A34",
+          "#014A59",
+          "#0A6D81",
+          "#1391AB",
+          "#00B8D9",
+          "#56DDFD",
+          "#D4F5FE"
+        ]
+      },
+      "mag": {
+        "role": "secondary",
+        "displayName": "Magenta de Plancha",
+        "canonical": "#E0218A",
+        "tonalRamp": [
+          "#1D000D",
+          "#480128",
+          "#790247",
+          "#AD0B68",
+          "#E1238B",
+          "#FE66AD",
+          "#FFADCD",
+          "#FFE7F0"
+        ]
+      },
+      "mag-solid": {
+        "role": "secondary",
+        "displayName": "Magenta Macizo",
+        "canonical": "#C4176F",
+        "tonalRamp": [
+          "#1D000B",
+          "#480225",
+          "#7A0442",
+          "#B00061",
+          "#DC3682",
+          "#FF67A5",
+          "#FDAFC9",
+          "#FFE7EE"
+        ]
+      },
+      "mag-ink": {
+        "role": "secondary",
+        "displayName": "Magenta Tinta",
+        "canonical": "#AD0D67",
+        "tonalRamp": [
+          "#1D000D",
+          "#480128",
+          "#790346",
+          "#AD0D67",
+          "#D54089",
+          "#FE67AC",
+          "#FFADCD",
+          "#FFE7EF"
+        ]
+      },
+      "mag-12": {
+        "role": "secondary",
+        "displayName": "Trama Magenta 12 %",
+        "canonical": "#FCE6F2",
+        "tonalRamp": [
+          "#13060E",
+          "#2F2029",
+          "#4D3C46",
+          "#6D5B65",
+          "#8F7C87",
+          "#B39EAA",
+          "#D7C2CE",
+          "#FDE7F3"
+        ]
+      },
+      "ink": {
+        "role": "tertiary",
+        "displayName": "Índigo Sobreimpreso",
+        "canonical": "#001876",
+        "tonalRamp": [
+          "#000135",
+          "#00166A",
+          "#123794",
+          "#305ABA",
+          "#507DE0",
+          "#77A2FD",
+          "#AFC9FE",
+          "#E7EFFF"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Índigo Medio",
+        "canonical": "#47588F",
+        "tonalRamp": [
+          "#030231",
+          "#141F51",
+          "#2F3E72",
+          "#4D5E95",
+          "#6C80BA",
+          "#8EA3DF",
+          "#B5C8FD",
+          "#E8EEFF"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Índigo Claro",
+        "canonical": "#8E9AC0",
+        "tonalRamp": [
+          "#040723",
+          "#1B2341",
+          "#374061",
+          "#556083",
+          "#7581A6",
+          "#97A4CA",
+          "#BBC8F0",
+          "#E8EEFF"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Papel Frío",
+        "canonical": "#FAFCFD",
+        "tonalRamp": [
+          "#0A0B0C",
+          "#242526",
+          "#414243",
+          "#606162",
+          "#818383",
+          "#A3A5A6",
+          "#C7C9CA",
+          "#EDEFF0"
+        ]
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Hoja Blanca",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#A5A5A5",
+          "#C9C9C9",
+          "#EEEEEE"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Filete",
+        "canonical": "#00187624",
+        "tonalRamp": [
+          "#000135",
+          "#00166A",
+          "#123794",
+          "#305ABA",
+          "#507DE0",
+          "#77A2FD",
+          "#AFC9FE",
+          "#E7EFFF"
+        ]
+      },
+      "cyan-12": {
+        "role": "neutral",
+        "displayName": "Trama Cian 12 %",
+        "canonical": "#E1F6FA",
+        "tonalRamp": [
+          "#010E10",
+          "#18282B",
+          "#344549",
+          "#536568",
+          "#73868A",
+          "#96A9AD",
+          "#B9CDD1",
+          "#DEF3F7"
+        ]
+      },
+      "cyan-20": {
+        "role": "neutral",
+        "displayName": "Trama Cian 20 %",
+        "canonical": "#CCF1F7",
+        "tonalRamp": [
+          "#000E11",
+          "#082A2F",
+          "#27484D",
+          "#46686D",
+          "#67898F",
+          "#89ACB2",
+          "#ADD1D7",
+          "#D1F6FC"
+        ]
+      },
+      "cyan-35": {
+        "role": "neutral",
+        "displayName": "Trama Cian 35 %",
+        "canonical": "#A6E7F2",
+        "tonalRamp": [
+          "#000E11",
+          "#012B31",
+          "#034B54",
+          "#2B6C76",
+          "#4E8E98",
+          "#71B1BC",
+          "#95D6E1",
+          "#CDF7FF"
+        ]
+      },
+      "trama-dot": {
+        "role": "neutral",
+        "displayName": "Punto de Trama",
+        "canonical": "#AEE9F3",
+        "tonalRamp": [
+          "#000E11",
+          "#022B31",
+          "#0A4B53",
+          "#326B74",
+          "#548D96",
+          "#77B0BA",
+          "#9AD5DF",
+          "#CDF7FF"
+        ]
+      },
+      "mat": {
+        "role": "neutral",
+        "displayName": "Mat",
+        "canonical": "#F1F9FB",
+        "tonalRamp": [
+          "#070C0D",
+          "#202628",
+          "#3D4345",
+          "#5C6364",
+          "#7D8486",
+          "#9FA7A8",
+          "#C3CBCD",
+          "#E8F0F2"
+        ]
+      },
+      "mat-grid": {
+        "role": "neutral",
+        "displayName": "Cuadrícula del Mat",
+        "canonical": "#00187621",
+        "tonalRamp": [
+          "#000135",
+          "#00166A",
+          "#123794",
+          "#305ABA",
+          "#507DE0",
+          "#77A2FD",
+          "#AFC9FE",
+          "#E7EFFF"
+        ]
+      },
+      "frame": {
+        "role": "neutral",
+        "displayName": "Marco",
+        "canonical": "#00187673",
+        "tonalRamp": [
+          "#000135",
+          "#00166A",
+          "#123794",
+          "#305ABA",
+          "#507DE0",
+          "#77A2FD",
+          "#AFC9FE",
+          "#E7EFFF"
+        ]
+      },
+      "veil": {
+        "role": "neutral",
+        "displayName": "Velo",
+        "canonical": "#00187657",
+        "tonalRamp": [
+          "#000135",
+          "#00166A",
+          "#123794",
+          "#305ABA",
+          "#507DE0",
+          "#77A2FD",
+          "#AFC9FE",
+          "#E7EFFF"
+        ]
+      },
+      "veil-paper": {
+        "role": "neutral",
+        "displayName": "Papel Velado",
+        "canonical": "#A5AECF",
+        "tonalRamp": [
+          "#06081F",
+          "#1D233D",
+          "#39405C",
+          "#58607D",
+          "#7881A0",
+          "#9BA4C4",
+          "#BEC8EA",
+          "#E9EEFF"
+        ]
+      },
+      "printed-mark": {
+        "role": "neutral",
+        "displayName": "Marca Impresa",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#A5A5A5",
+          "#C9C9C9",
+          "#EEEEEE"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Mensaje del estado vacío."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Nombre de la máquina."
+      },
+      "dialog-title": {
+        "displayName": "Dialog Title",
+        "purpose": "Título de diálogo."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Marca y título de pantalla."
+      },
+      "data-value": {
+        "displayName": "Data Value",
+        "purpose": "Valores de la lectura de corte."
+      },
+      "action": {
+        "displayName": "Action",
+        "purpose": "Botón de corte."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Títulos del panel, botones principales y Detener."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Botones, pastilla de estado y listas."
+      },
+      "number": {
+        "displayName": "Number",
+        "purpose": "Campos numéricos."
+      },
+      "control-small": {
+        "displayName": "Control Small",
+        "purpose": "Segmentado, interruptores, chip de soporte y aviso índigo."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Filas de datos y mensajes de diálogo."
+      },
+      "muted-strong": {
+        "displayName": "Muted Strong",
+        "purpose": "Texto de los avisos magenta."
+      },
+      "muted": {
+        "displayName": "Muted",
+        "purpose": "Líneas secundarias y rótulos de la lectura de corte."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Rótulos sobre campos y celdas de herramienta."
+      }
+    },
+    "shadows": [
+      {
+        "name": "flotante",
+        "value": "0 3px 12px rgba(0,24,118,0.18)",
+        "purpose": "Aproximación CSS de elevation 6dp con outlineSpotShadowColor índigo: chip, barras, rejilla, resumen y botones de la mesa."
+      },
+      {
+        "name": "tira",
+        "value": "0 4px 16px rgba(0,24,118,0.20)",
+        "purpose": "Aproximación CSS de elevation 8dp con outlineSpotShadowColor índigo: tiras de progreso y resultado."
+      },
+      {
+        "name": "hoja",
+        "value": "0 4px 16px rgba(0,24,118,0.16)",
+        "purpose": "setShadowLayer(16dp, 0, 4dp, #00187629): hoja o mat sobre la mesa."
+      }
+    ],
+    "motion": [
+      {
+        "name": "registro-cierra",
+        "value": "460ms DecelerateInterpolator(3)",
+        "purpose": "Las planchas cierran el registro en marca, cruz y líneas de corte."
+      },
+      {
+        "name": "registro-busca",
+        "value": "1100ms AccelerateDecelerate, repetición inversa infinita, separación 1 a 0,2",
+        "purpose": "Máquina ocupada; se pausa cuando la vista no es visible."
+      },
+      {
+        "name": "aparicion",
+        "value": "160ms alpha",
+        "purpose": "Entrada del velo y del aviso índigo."
+      },
+      {
+        "name": "aviso-permanencia",
+        "value": "2600ms",
+        "purpose": "Tiempo en pantalla del aviso índigo."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Botón de corte",
+      "kind": "button",
+      "refersTo": "button-cut",
+      "description": "La acción principal flotante; su texto dice lo que falta para cortar.",
+      "html": "<button class=\"ds-btn-cut\">Cortar 3 de 9 trazados</button>",
+      "css": ".ds-btn-cut{font-family:Barlow,sans-serif;background:#00B8D9;color:#001876;font-size:17px;font-weight:700;height:60px;min-width:216px;padding:0 18px;border:0;border-radius:14px;box-shadow:0 3px 12px rgba(0,24,118,.18);transition:background .16s} .ds-btn-cut:hover{background:#00ACCB} .ds-btn-cut:focus-visible{outline:2px solid #001876;outline-offset:2px} .ds-btn-cut:active{background:#00A0BE} .ds-btn-cut:disabled{background:#CCF1F7;color:#47588F}"
+    },
+    {
+      "name": "Corte relegado",
+      "kind": "button",
+      "refersTo": "button-cut-demoted",
+      "description": "El botón de corte cuando imprimir va primero.",
+      "html": "<button class=\"ds-btn-demoted\">Escanear y cortar 28 trazados</button>",
+      "css": ".ds-btn-demoted{font-family:Barlow,sans-serif;background:#FAFCFD;color:#001876;font-size:17px;font-weight:700;height:60px;min-width:216px;padding:0 18px;border:2px solid #00B8D9;border-radius:14px} .ds-btn-demoted:hover{background:#E1F6FA} .ds-btn-demoted:focus-visible{outline:2px solid #001876;outline-offset:2px} .ds-btn-demoted:active{background:#A6E7F2}"
+    },
+    {
+      "name": "Botón de herramienta",
+      "kind": "button",
+      "refersTo": "button-tool",
+      "description": "Acción secundaria sobre trama.",
+      "html": "<button class=\"ds-btn-tool\">Probar búsqueda</button>",
+      "css": ".ds-btn-tool{font-family:Barlow,sans-serif;background:#E1F6FA;color:#001876;font-size:15px;font-weight:600;height:48px;padding:0 14px;border:0;border-radius:10px;transition:background .16s} .ds-btn-tool:hover,.ds-btn-tool:active{background:#A6E7F2} .ds-btn-tool:focus-visible{outline:2px solid #001876;outline-offset:2px} .ds-btn-tool:disabled{background:transparent;color:#8E9AC0}"
+    },
+    {
+      "name": "Botón plano",
+      "kind": "nav",
+      "refersTo": "button-flat",
+      "description": "Acción de la barra superior, con icono y sin fondo en reposo.",
+      "html": "<button class=\"ds-btn-flat\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"#001876\" aria-hidden=\"true\"><path d=\"M19,8H5c-1.66,0 -3,1.34 -3,3v6h4v4h12v-4h4v-6c0,-1.66 -1.34,-3 -3,-3zM16,19H8v-5h8v5zM19,12c-0.55,0 -1,-0.45 -1,-1s0.45,-1 1,-1 1,0.45 1,1 -0.45,1 -1,1zM18,3H6v4h12V3z\"/></svg><span>Imprimir</span></button>",
+      "css": ".ds-btn-flat{font-family:Barlow,sans-serif;display:inline-flex;align-items:center;gap:6px;background:transparent;color:#001876;font-size:15px;font-weight:600;height:48px;padding:0 12px 0 8px;border:0;border-radius:10px;transition:background .16s} .ds-btn-flat:hover{background:#CCF1F7} .ds-btn-flat:active{background:#A6E7F2} .ds-btn-flat:focus-visible{outline:2px solid #001876;outline-offset:2px}"
+    },
+    {
+      "name": "Detener",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Acción destructiva durante el corte.",
+      "html": "<button class=\"ds-btn-danger\">Detener</button>",
+      "css": ".ds-btn-danger{font-family:Barlow,sans-serif;background:#C4176F;color:#FFFFFF;font-size:16px;font-weight:700;height:64px;min-width:132px;border:0;border-radius:14px;transition:background .16s} .ds-btn-danger:hover,.ds-btn-danger:active{background:#AD0D67} .ds-btn-danger:focus-visible{outline:2px solid #001876;outline-offset:2px}"
+    },
+    {
+      "name": "Celda Eliminar",
+      "kind": "custom",
+      "refersTo": "cell-danger",
+      "description": "Celda destructiva de la rejilla de herramientas; las demás usan trama de cian.",
+      "html": "<button class=\"ds-cell\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"#AD0D67\" aria-hidden=\"true\"><path d=\"M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z\"/></svg><span>Eliminar</span></button>",
+      "css": ".ds-cell{font-family:Barlow,sans-serif;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:78px;height:54px;background:#FCE6F2;color:#AD0D67;font-size:12px;font-weight:600;border:0;border-radius:10px;transition:background .16s} .ds-cell:hover,.ds-cell:active{background:#F6CFE4} .ds-cell:focus-visible{outline:2px solid #001876;outline-offset:2px}"
+    },
+    {
+      "name": "Campo numérico",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Rótulo siempre visible y trama que se vuelve hoja al enfocar.",
+      "html": "<label class=\"ds-field\"><span>Ancho (mm)</span><input value=\"189,0\" inputmode=\"decimal\"></label>",
+      "css": ".ds-field{font-family:Barlow,sans-serif;display:flex;flex-direction:column;gap:3px;width:150px;color:#47588F;font-size:12px;font-weight:600} .ds-field input{font-family:Barlow,sans-serif;height:48px;padding:0 6px 0 10px;background:#E1F6FA;color:#001876;font-size:15px;font-weight:600;font-feature-settings:\"tnum\";border:2px solid transparent;border-radius:10px;outline:0} .ds-field input:hover{background:#CCF1F7} .ds-field input:focus-visible{background:#FFFFFF;border-color:#001876}"
+    },
+    {
+      "name": "Segmentado",
+      "kind": "chip",
+      "refersTo": "segment-item-checked",
+      "description": "Elección excluyente sobre un riel de trama.",
+      "html": "<div class=\"ds-seg\" role=\"radiogroup\"><button class=\"ds-seg-on\" role=\"radio\" aria-checked=\"true\">Automático</button><button role=\"radio\" aria-checked=\"false\">Manual</button></div>",
+      "css": ".ds-seg{display:inline-flex;width:300px;padding:3px;background:#E1F6FA;border-radius:12px} .ds-seg button{font-family:Barlow,sans-serif;flex:1;height:48px;background:transparent;color:#001876;font-size:14px;font-weight:600;border:0;border-radius:10px} .ds-seg button:hover{background:#CCF1F7} .ds-seg button:focus-visible{outline:2px solid #001876;outline-offset:1px} .ds-seg .ds-seg-on,.ds-seg .ds-seg-on:hover{background:#001876;color:#FFFFFF}"
+    },
+    {
+      "name": "Pastilla de estado",
+      "kind": "custom",
+      "refersTo": "status-pill",
+      "description": "Cruz de registro en registro y texto de la máquina; abre Máquina.",
+      "html": "<button class=\"ds-pill\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 28 28\" aria-hidden=\"true\" style=\"isolation:isolate\"><g transform=\"translate(0 0.0)\" style=\"mix-blend-mode:multiply\" stroke=\"#00B8D9\" stroke-width=\"2.1\" fill=\"none\"><circle cx=\"14\" cy=\"14\" r=\"6.6\"/><path d=\"M2.8 14H25.2M14 2.8V25.2\"/></g><g transform=\"translate(0 0.0)\" style=\"mix-blend-mode:multiply\" stroke=\"#E0218A\" stroke-width=\"2.1\" fill=\"none\"><circle cx=\"14\" cy=\"14\" r=\"6.6\"/><path d=\"M2.8 14H25.2M14 2.8V25.2\"/></g></svg><span>CAMEO 4 · lista</span></button>",
+      "css": ".ds-pill{font-family:Barlow,sans-serif;display:inline-flex;align-items:center;gap:6px;height:48px;padding:0 14px 0 9px;background:#E1F6FA;color:#001876;font-size:15px;font-weight:600;font-feature-settings:\"tnum\";border:0;border-radius:22px;transition:background .16s} .ds-pill:hover,.ds-pill:active{background:#A6E7F2} .ds-pill:focus-visible{outline:2px solid #001876;outline-offset:2px}"
+    },
+    {
+      "name": "Pastilla sin conexión",
+      "kind": "custom",
+      "refersTo": "status-pill-off",
+      "description": "Las planchas fuera de registro: separación completa.",
+      "html": "<button class=\"ds-pill-off\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 28 28\" aria-hidden=\"true\" style=\"isolation:isolate\"><g transform=\"translate(-3.2 -2.56)\" style=\"mix-blend-mode:multiply\" stroke=\"#00B8D9\" stroke-width=\"2.1\" fill=\"none\"><circle cx=\"14\" cy=\"14\" r=\"6.6\"/><path d=\"M2.8 14H25.2M14 2.8V25.2\"/></g><g transform=\"translate(3.2 2.56)\" style=\"mix-blend-mode:multiply\" stroke=\"#E0218A\" stroke-width=\"2.1\" fill=\"none\"><circle cx=\"14\" cy=\"14\" r=\"6.6\"/><path d=\"M2.8 14H25.2M14 2.8V25.2\"/></g></svg><span>Sin conexión</span></button>",
+      "css": ".ds-pill-off{font-family:Barlow,sans-serif;display:inline-flex;align-items:center;gap:6px;height:48px;padding:0 14px 0 9px;background:#FCE6F2;color:#AD0D67;font-size:15px;font-weight:600;border:0;border-radius:22px;transition:background .16s} .ds-pill-off:hover,.ds-pill-off:active{background:#F6CFE4} .ds-pill-off:focus-visible{outline:2px solid #001876;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "La plancha a dos tintas",
+    "overview": "La pantalla es una plancha de risografía y el estado es el registro. Hay dos tintas reales, cian y magenta, sobre papel frío; el índigo no se elige, aparece solo donde las dos coinciden. Jean, en el taller junto a la Cameo y con la hoja impresa en la mano, ve de un vistazo si la máquina está lista (el registro cierra), qué se va a cortar (líneas índigo sobre la hoja) y cuál es el siguiente paso (un solo botón cian según el estado).\n\nEl sistema funciona como una leyenda de mapa: cada tinta tiene un significado y la jerarquía la lleva la tipografía, no las cajas. Es denso y sereno, una herramienta de producción con superficies de trama de cian en vez de grises. Rechaza el editor gris oscuro con un acento y los colores de juguete de Silhouette Studio.\n\nAlcance: este sistema rige la app Android (`android/`). El panel de Illustrator conserva su mundo oscuro propio, adaptado al tema de la aplicación anfitriona, y no se rige por este archivo. La tablet real mide 960 × 600 dp.",
+    "keyCharacteristics": [
+      "Papel frío claro, tramas de cian como superficie y un índigo multiplicado de verdad para texto y líneas.",
+      "Leyenda estricta: cian actúa, magenta advierte, índigo registra.",
+      "Un gesto único: fuera de registro → en registro, en la marca, la cruz de estado y las líneas de corte.",
+      "Barlow en tres pesos, sin mayúsculas forzadas; todo número con unidad y cifras tabulares.",
+      "Solo flota lo que está sobre la mesa, con sombra difusa teñida de índigo."
+    ],
+    "rules": [
+      {
+        "name": "La Regla de la Leyenda",
+        "body": "Cada tinta significa una sola cosa. Cian es acción o lo que la mano opera; magenta es destructivo, error o fuera del soporte; índigo es texto y toda línea en registro.",
+        "section": "colors"
+      },
+      {
+        "name": "La Regla del Multiplicado",
+        "body": "El índigo es el producto de cian y magenta, no un color elegido. Si cambia una tinta, se recalcula el índigo y toda su familia.",
+        "section": "colors"
+      },
+      {
+        "name": "La Regla de las Planchas",
+        "body": "Cian y magenta se ven juntos y sin significado de leyenda en un solo caso: cuando las planchas se separan. La separación es el dato; ahí el magenta no significa error por sí mismo.",
+        "section": "colors"
+      },
+      {
+        "name": "La Regla de lo Ajeno",
+        "body": "El arte del usuario y las marcas de registro son material físico, no interfaz. Conservan sus colores reales, incluido el negro de las marcas, y nunca se reentintan.",
+        "section": "colors"
+      },
+      {
+        "name": "La Regla de la Jerarquía Tipográfica",
+        "body": "El orden lo dan peso y tamaño. Nada de mayúsculas forzadas, color de acento ni cajas para marcar un título.",
+        "section": "typography"
+      },
+      {
+        "name": "La Regla de la Unidad",
+        "body": "Todo número lleva su unidad, cifras tabulares y coma decimal (210,0 mm). Los rótulos de campo se ven siempre encima; el texto de ayuda dentro del campo desaparece al escribir.",
+        "section": "typography"
+      },
+      {
+        "name": "La Regla de los 48",
+        "body": "Todo control táctil mide al menos 48 dp. La barra inferior de vista, a 40 dp por pedido de Jean, es la única excepción y no se hereda.",
+        "section": "layout"
+      },
+      {
+        "name": "La Regla de la Hoja Suelta",
+        "body": "La sombra dice que algo está suelto sobre la mesa. Siempre es difusa y teñida de índigo; lo que pertenece a la estructura de la pantalla queda plano.",
+        "section": "elevation"
+      },
+      {
+        "name": "La Regla del Borde como Estado",
+        "body": "Las superficies se separan por tono, no por contorno. Un trazo aparece solo para decir algo: foco de campo (2 dp índigo), botón de corte relegado (2 dp cian), tamaño sin definir (punteado 1,5 dp índigo) y las líneas del propio lienzo.",
+        "section": "shapes"
+      },
+      {
+        "name": "La Regla del Único Cian",
+        "body": "En cada estado hay una sola acción principal rellena de cian: lo que falta para cortar. Si la acción cambia, el relleno se mueve.",
+        "section": "components"
+      },
+      {
+        "name": "La Regla de la Lectura",
+        "body": "Lo irreversible se confirma con datos, no con prosa: se lee en 3 segundos y el resultado se queda a la vista.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do usa índigo para el texto sobre cian (6,36:1).",
+      "Do dibuja las superficies con las tramas de cian al 12, 20 y 35 %, no con grises.",
+      "Do reserva el relleno magenta macizo y su trama para destruir, detener o avisar un fallo.",
+      "Do expresa el estado de la máquina con la separación de planchas, siempre junto a su texto.",
+      "Do tiñe de índigo el velo de los diálogos y las barras del sistema con Papel Velado.",
+      "Do escribe números con unidad, coma decimal y cifras tabulares.",
+      "Do usa iconos vectoriales de 24 dp teñidos con la tinta del control.",
+      "Do conserva el negro de las marcas de registro y los colores del arte del usuario."
+    ],
+    "donts": [
+      "Don't vuelvas al editor gris oscuro con un acento en Android.",
+      "Don't pongas texto blanco sobre cian ni texto cian sobre papel.",
+      "Don't uses magenta para decorar o marcar novedades; fuera de la separación de planchas, siempre significa destructivo, error o fuera del soporte.",
+      "Don't pongas dos rellenos cian compitiendo en un mismo estado.",
+      "Don't uses sombras duras ni sombras en la estructura de la pantalla.",
+      "Don't contornees superficies en reposo; el trazo se reserva para estados y líneas del lienzo.",
+      "Don't fuerces mayúsculas ni marques títulos con color de acento.",
+      "Don't uses el atenuado negro del sistema detrás de un diálogo.",
+      "Don't uses Índigo Claro en texto que se deba leer; es solo para deshabilitado.",
+      "Don't uses gradientes ni vidrio esmerilado: la tinta es plana."
+    ]
+  }
+}

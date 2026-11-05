@@ -1,6 +1,7 @@
 package cl.digitalfox.cameolink
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.os.Build
 import android.text.InputType
@@ -49,16 +50,35 @@ fun Activity.pill(msg: String) {
     v.postDelayed({ host.removeView(v) }, 2600)
 }
 
-/** Velo índigo detrás de un diálogo: se llama desde onWindowFocusChanged. */
-fun Activity.veil(on: Boolean) {
-    val host = findViewById<FrameLayout>(android.R.id.content)
-    val cur = host.findViewWithTag<View>("veil")
-    if (!on) { cur?.let { host.removeView(it) }; return }
-    if (cur != null) return
-    val v = View(this).apply { tag = "veil"; setBackgroundColor(0x57001876); alpha = 0f }
-    host.addView(v, FrameLayout.LayoutParams(-1, -1))
-    v.animate().alpha(1f).setDuration(160).start()
+/**
+ * Diálogo con el velo índigo detrás (el atenuado del sistema solo sabe ser negro). Lleva la cuenta porque
+ * un diálogo que abre otro se cierra después de crear el siguiente.
+ */
+class Sheet(private val owner: Activity) : AlertDialog.Builder(owner) {
+    override fun create(): AlertDialog = super.create().also { d ->
+        owner.veil(+1)
+        d.setOnDismissListener { owner.veil(-1) }
+    }
 }
+
+private fun Activity.veil(delta: Int) {
+    val host = findViewById<FrameLayout>(android.R.id.content)
+    val count = ((host.getTag(R.id.root) as? Int) ?: 0) + delta
+    host.setTag(R.id.root, count)
+    val cur = host.findViewWithTag<View>("veil")
+    if (count <= 0) {
+        cur?.let { host.removeView(it) }
+        window.statusBarColor = getColor(R.color.paper); window.navigationBarColor = getColor(R.color.paper)
+    } else if (cur == null) {
+        val v = View(this).apply { tag = "veil"; setBackgroundColor(0x57001876); alpha = 0f }
+        host.addView(v, FrameLayout.LayoutParams(-1, -1))
+        v.animate().alpha(1f).setDuration(160).start()
+        // el velo no llega a las barras del sistema: se tiñen con el mismo resultado sobre papel
+        window.statusBarColor = VEILED_PAPER; window.navigationBarColor = VEILED_PAPER
+    }
+}
+
+private const val VEILED_PAPER = 0xFFA5AECF.toInt()
 
 /** Decimales con coma, como se muestran; el punto también vale. El teclado sigue siendo numérico. */
 fun EditText.commaDecimal() {
