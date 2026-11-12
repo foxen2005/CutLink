@@ -84,7 +84,7 @@ class RegisterMark @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
     }
 }
 
-/** La marca «Cameo Link». */
+/** La marca «CutLink». */
 class RegisterText @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : PlateView(ctx, attrs) {
     private val label = ctx.getString(R.string.app_name)
     override val reach get() = 1.5f * resources.displayMetrics.density

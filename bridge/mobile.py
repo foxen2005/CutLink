@@ -59,15 +59,35 @@ def _image_dir(path: str, cache: str | os.PathLike | None) -> Path:
     return Path(cache) / key
 
 
+def probe(path: str | os.PathLike) -> dict:
+    """Lo justo para decidir cómo abrir: tipo, tamaño y si un .studio3 trae imágenes."""
+    path = os.fspath(path)
+    with open(path, "rb") as fh:
+        data = fh.read()
+    kind = detect_kind(data, path)
+    return {"ok": True, "kind": kind, "bytes": len(data),
+            "image_refs": studio3.count_image_refs(data) if kind == "studio3" else 0}
+
+
+def probe_json(path: str) -> str:
+    try:
+        return json.dumps(probe(path), ensure_ascii=False)
+    except Exception as exc:  # noqa: BLE001 — el mensaje va a la pantalla
+        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
+
+
 def load(path: str | os.PathLike, cache_dir: str | os.PathLike | None = None,
-         tolerance_mm: float = 0.1) -> dict:
-    """cache_dir: dónde dejar las imágenes de un .studio3 (la app pasa su caché)."""
+         tolerance_mm: float = 0.1, images: bool = True) -> dict:
+    """cache_dir: dónde dejar las imágenes de un .studio3 (la app pasa su caché).
+    images=False: un .studio3 se abre solo con sus líneas de corte (stickers pesados)."""
+    with_images = images
     path = os.fspath(path)
     with open(path, "rb") as fh:
         data = fh.read()                     # se lee una sola vez
     kind = detect_kind(data, path)
     warnings: list[str] = []
     images: list[dict] = []
+    skipped = 0
     if kind == "svg":
         geom = svg_to_polylines(data, tolerance_mm)
         page = (geom.width_mm, geom.height_mm)
@@ -79,13 +99,16 @@ def load(path: str | os.PathLike, cache_dir: str | os.PathLike | None = None,
         page = (geom.width_mm, geom.height_mm)
         paths = geom.paths
     else:
-        doc = studio3.parse(path)
+        doc = studio3.parse(path, with_images=with_images)
         # sin el marco de página: en Illustrator alinea, aquí no es un corte
         geom = svg_to_polylines(studio3.to_svg(doc, page_frame=False).encode("utf-8"), tolerance_mm)
         page = doc.page_mm
         paths = geom.paths
-        images = [{"file": im["file"], "name": im["name"], "matrix": im["matrix"]}
-                  for im in studio3.write_images(doc, _image_dir(path, cache_dir))]
+        if with_images:
+            images = [{"file": im["file"], "name": im["name"], "matrix": im["matrix"]}
+                      for im in studio3.write_images(doc, _image_dir(path, cache_dir))]
+        else:
+            skipped = studio3.count_image_refs(data)
         studio3.check_page(doc)
         warnings = list(doc.warnings)
 
@@ -115,6 +138,7 @@ def load(path: str | os.PathLike, cache_dir: str | os.PathLike | None = None,
             "group": group_of(p),
         } for p in ordered],
         "images": images,
+        "images_skipped": skipped,
         "warnings": warnings,
         "stats": {"paths": len(ordered), "points": sum(len(p.points) for p in ordered),
                   "length_mm": round(sum(_length(p) for p in ordered), 1)},
@@ -150,9 +174,9 @@ def presets_json() -> str:
     return json.dumps(presets(), ensure_ascii=False)
 
 
-def load_json(path: str, cache_dir: str | None = None, tolerance_mm: float = 0.1) -> str:
+def load_json(path: str, cache_dir: str | None = None, tolerance_mm: float = 0.1, images: bool = True) -> str:
     """Para Kotlin: nunca lanza; los errores vuelven como {"ok": false, "error": ...}."""
     try:
-        return json.dumps(load(path, cache_dir, tolerance_mm), ensure_ascii=False)
+        return json.dumps(load(path, cache_dir, tolerance_mm, images), ensure_ascii=False)
     except Exception as exc:  # noqa: BLE001 — el mensaje va a la pantalla
         return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)

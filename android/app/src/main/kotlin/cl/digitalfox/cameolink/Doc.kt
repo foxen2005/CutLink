@@ -111,6 +111,8 @@ data class Support(val id: String, val name: String, val w: Double, val h: Doubl
 /** Documento abierto + editor (seleccionar, mover, escalar, girar, agrupar, deshacer). */
 class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Double, val warnings: List<String>) {
     var items = mutableListOf<Item>()
+    /** Imágenes del .studio3 que se dejaron fuera al abrir (solo líneas de corte). */
+    var skippedImages = 0
     val sel = LinkedHashSet<String>()           // claves: "g<n>" grupo o "i<id>" forma suelta
     private var nextId = 1
     private var nextGroup = 1
@@ -370,6 +372,7 @@ class Doc(val name: String, val kind: String, val pageW: Double, val pageH: Doub
             }
             // imágenes debajo de las líneas: se dibujan primero
             d.items = (imageItems + d.items).toMutableList()
+            d.skippedImages = js.optInt("images_skipped", 0)
             return d
         }
     }

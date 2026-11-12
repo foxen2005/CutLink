@@ -117,3 +117,22 @@ def test_load_json_never_raises(tmp_path):
     bad.write_text("hola")
     out = json.loads(mobile.load_json(str(bad)))
     assert out["ok"] is False and "Formato no reconocido" in out["error"]
+
+
+def test_studio3_can_open_without_images(tmp_path):
+    if not CALENDAR.exists():
+        pytest.skip("falta el archivo real del calendario")
+    p = mobile.probe(CALENDAR)
+    assert p["kind"] == "studio3" and p["image_refs"] >= 8 and p["bytes"] > 0
+    full = mobile.load(CALENDAR, tmp_path / "con")
+    lean = mobile.load(CALENDAR, tmp_path / "sin", images=False)
+    assert lean["images"] == [] and lean["images_skipped"] >= 8 and full["images_skipped"] == 0
+    assert lean["paths"] == full["paths"]                       # las líneas son las mismas
+    assert not (tmp_path / "sin").exists()                      # no se extrajo ninguna imagen
+
+
+def test_probe_of_files_without_images(tmp_path):
+    f = tmp_path / "a.svg"
+    f.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">'
+                 '<rect x="1" y="1" width="5" height="5"/></svg>', encoding="utf-8")
+    assert mobile.probe(f)["image_refs"] == 0

@@ -1,12 +1,16 @@
-# Cameo Cut — Illustrator → Silhouette CAMEO 4
+# CutLink
 
-Panel de Illustrator 2025 que envía trabajos de corte directo a la Silhouette CAMEO 4,
-sin pasar por Silhouette Studio. Dos piezas:
+Imprimir y cortar sin Silhouette Studio. Hoy maneja la Silhouette CAMEO 4; la idea es sumar
+más máquinas. Tres piezas:
+
+- `android/` — **CutLink**, app para tablet Android: abre SVG, DXF y .studio3, acomoda,
+  imprime y corta por Bluetooth (también Print & Cut). Ver `DESIGN.md` para su estilo.
 
 - `bridge/` — servicio Python local (`http://127.0.0.1:7474`) que habla GPGL con la máquina
   a través de `usbprint.sys` (el driver que Windows ya usa; **no** hace falta Zadig/libusb y
   Silhouette Studio sigue funcionando).
-- `panel/` — extensión CEP (HTML/JS + ExtendScript) que exporta la geometría y llama al bridge.
+- `panel/` — **Cameo Cut**, extensión CEP de Illustrator 2025 (HTML/JS + ExtendScript) que exporta la
+  geometría y llama al bridge.
 
 ## Instalación
 

@@ -465,7 +465,18 @@ def _parse_images(data: bytes, pool: dict, shapes: list[PathShape], warnings: li
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
-def parse(path: str) -> Studio3Doc:
+def count_image_refs(data: bytes) -> int:
+    """Objetos que referencian una imagen, sin extraer nada: sirve para preguntar antes de abrir.
+    La miniatura del archivo no cuenta (no tiene registro de objeto)."""
+    n = 0
+    for m in re.finditer(re.escape(IMAGE_REF) + rb"([\x01-\x7f])\x00\x00\x00", data):
+        if re.fullmatch(IMAGE_TOKEN_RE, data[m.end():m.end() + m.group(1)[0]]):
+            n += 1
+    return n
+
+
+def parse(path: str, with_images: bool = True) -> Studio3Doc:
+    """with_images=False: solo las líneas; ni se buscan ni se extraen las imágenes (archivos pesados)."""
     data = Path(path).read_bytes()
     if not data.startswith(MAGIC):
         raise ValueError("No es un archivo Silhouette Studio (.studio3)")
@@ -473,10 +484,12 @@ def parse(path: str) -> Studio3Doc:
     page = _page_size(data)
     shapes = _parse_paths(data, warnings)
     texts = _parse_texts(data, warnings)
-    pool = _image_pool(data)
-    # la miniatura es la primera PNG pequeña sin nombre de archivo
-    pool = {k: v for k, v in pool.items() if not k.startswith("image_") or len(v[0]) > 400_000}
-    images = _parse_images(data, pool, shapes, warnings)
+    images: list[ImageObj] = []
+    if with_images:
+        pool = _image_pool(data)
+        # la miniatura es la primera PNG pequeña sin nombre de archivo
+        pool = {k: v for k, v in pool.items() if not k.startswith("image_") or len(v[0]) > 400_000}
+        images = _parse_images(data, pool, shapes, warnings)
     return Studio3Doc(path=path, page_mm=page, shapes=shapes, texts=texts, images=images, warnings=warnings)
 
 

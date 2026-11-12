@@ -479,7 +479,7 @@ class MainActivity : Activity(), Machine.Observer {
         val text = m.logLines.reversed().joinToString("\n")
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Cameo Link registro")
+            putExtra(Intent.EXTRA_SUBJECT, "CutLink registro")
             putExtra(Intent.EXTRA_TEXT, text)
         }, "Compartir registro"))
     }

@@ -1,5 +1,5 @@
 ---
-name: Cameo Link
+name: CutLink
 description: Plancha a dos tintas para abrir, acomodar, imprimir y cortar en la Silhouette CAMEO desde una tablet Android.
 # Unidades: el formato solo admite dimensiones CSS. 1px de token = 1dp en Android (1sp en fontSize).
 colors:
@@ -259,7 +259,7 @@ components:
     padding: "10px"
 ---
 
-# Design System: Cameo Link
+# Design System: CutLink
 
 ## Overview
 
@@ -418,7 +418,7 @@ No hay navegación por pestañas. La barra superior reúne marca, Abrir, Agregar
 Icono sobre rótulo en 54 dp, trama 12 %, en la rejilla de dos columnas. Eliminar es la única celda magenta y va al final de la rejilla.
 
 ### Cruz de registro y marca
-La firma del sistema. Dos planchas, cian y magenta, multiplicadas; la distancia entre ellas es el estado. Lista: en registro, se ve índigo. Ocupada: oscila en 1100 ms sin llegar a cerrar. Sin máquina: separación completa. El cierre dura 460 ms con desaceleración fuerte. La cruz mide 28 dp en la pastilla, 76 dp en Máquina y 88 dp en el estado vacío; la marca Cameo Link se separa solo 1,5 dp para seguir legible.
+La firma del sistema. Dos planchas, cian y magenta, multiplicadas; la distancia entre ellas es el estado. Lista: en registro, se ve índigo. Ocupada: oscila en 1100 ms sin llegar a cerrar. Sin máquina: separación completa. El cierre dura 460 ms con desaceleración fuerte. La cruz mide 28 dp en la pastilla, 76 dp en Máquina y 88 dp en el estado vacío; la marca CutLink se separa solo 1,5 dp para seguir legible.
 
 ### Mesa y líneas de corte
 La mesa es trama 20 % con puntos; la hoja se apoya encima a escala real.

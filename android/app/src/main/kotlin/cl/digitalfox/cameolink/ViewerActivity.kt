@@ -492,7 +492,8 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
         return uri.lastPathSegment?.substringAfterLast('/') ?: "archivo"
     }
 
-    /** Copia el archivo a la caché (Python lee rutas, no content://) y lo abre con bridge.mobile. */
+    /** Copia el archivo a la caché (Python lee rutas, no content://) y lo abre con bridge.mobile. Un
+     *  .studio3 con imágenes pregunta antes: para cortar bastan las líneas y las imágenes pesan. */
     private fun openUri(uri: Uri) {
         v<TextView>(R.id.fileName).text = "Abriendo…"
         m.files.execute {
@@ -502,20 +503,48 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 dir.listFiles()?.forEach { it.delete() }          // solo el último abierto
                 val f = File(dir, name)
                 contentResolver.openInputStream(uri)!!.use { inp -> f.outputStream().use { inp.copyTo(it) } }
+                val probe = JSONObject(m.python().getModule("bridge.mobile").callAttr("probe_json", f.absolutePath).toString())
+                if (!probe.optBoolean("ok")) throw IllegalStateException(probe.optString("error"))
+                if (probe.optInt("image_refs") > 0) runOnUiThread { askImages(uri, name, f, probe.getLong("bytes")) }
+                else loadFile(uri, name, f, withImages = true)
+            } catch (e: Throwable) {
+                openFailed(e)
+            }
+        }
+    }
+
+    private fun askImages(uri: Uri, name: String, f: File, bytes: Long) {
+        val mb = bytes / 1_048_576.0
+        Sheet(this)
+            .setTitle("¿Abrir con las imágenes?")
+            .setMessage("$name · ${if (mb >= 1) "${nf(mb)} MB" else "${bytes / 1024} KB"}\n" +
+                "Para cortar bastan las líneas; para imprimir hacen falta las imágenes.")
+            .setPositiveButton("Solo líneas de corte") { _, _ -> m.files.execute { loadFile(uri, name, f, withImages = false) } }
+            .setNegativeButton("Con imágenes") { _, _ -> m.files.execute { loadFile(uri, name, f, withImages = true) } }
+            .setOnCancelListener { v<TextView>(R.id.fileName).text = doc?.name ?: "Ningún archivo abierto" }
+            .show()
+    }
+
+    /** En el hilo de archivos. */
+    private fun loadFile(uri: Uri, name: String, f: File, withImages: Boolean) {
+        try {
                 val t0 = System.currentTimeMillis()
                 val js = JSONObject(m.python().getModule("bridge.mobile")
-                    .callAttr("load_json", f.absolutePath, File(cacheDir, "img").absolutePath).toString())
+                    .callAttr("load_json", f.absolutePath, File(cacheDir, "img").absolutePath, 0.1, withImages).toString())
                 if (!js.optBoolean("ok")) throw IllegalStateException(js.optString("error"))
                 val d = Doc.fromJson(js) { p -> loadBitmap(p) }
-                m.onLog("Abierto $name: ${js.getJSONObject("stats")} en ${System.currentTimeMillis() - t0} ms")
+                m.onLog("Abierto $name${if (withImages) "" else " (solo líneas)"}: ${js.getJSONObject("stats")} en ${System.currentTimeMillis() - t0} ms")
                 runOnUiThread { addRecent(uri, name); askSupport(d, keepCurrent = false) }
-            } catch (e: Throwable) {
-                m.onLog("No se pudo abrir: ${e.message}")
-                runOnUiThread {
-                    v<TextView>(R.id.fileName).text = doc?.name ?: "Ningún archivo abierto"
-                    Sheet(this).setTitle("No se pudo abrir").setMessage(e.message).setPositiveButton("OK", null).show()
-                }
-            }
+        } catch (e: Throwable) {
+            openFailed(e)
+        }
+    }
+
+    private fun openFailed(e: Throwable) {
+        m.onLog("No se pudo abrir: ${e.message}")
+        runOnUiThread {
+            v<TextView>(R.id.fileName).text = doc?.name ?: "Ningún archivo abierto"
+            Sheet(this).setTitle("No se pudo abrir").setMessage(e.message).setPositiveButton("OK", null).show()
         }
     }
 
@@ -807,6 +836,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
             add("Trazados" to "${shapes.size}")
             add("Largo de corte" to "${nf(len / 10)} cm")
             if (imgs > 0) add("Imágenes" to "$imgs")
+            else if (d.skippedImages > 0) add("Imágenes" to "no importadas")
         }
         showDocRows(rows)
         val warns = d.warnings + if (out > 0) listOf("$out trazados se salen del soporte y no se cortarán.") else emptyList()
@@ -1332,7 +1362,7 @@ class ViewerActivity : Activity(), Machine.Observer, CanvasView.Listener {
                 } catch (e: Exception) { cb.onWriteFailed(e.message) }
             }
         }
-        printJob = getSystemService(android.print.PrintManager::class.java).print("Cameo Link · ${d.name}", adapter, attrs)
+        printJob = getSystemService(android.print.PrintManager::class.java).print("CutLink · ${d.name}", adapter, attrs)
         // vale solo con marcas y si el trabajo no se cancela ni falla (printedSig)
         printedSignature = if (r != null) sig else null
         m.onLog("Hoja para imprimir: ${nf(sup.w)} × ${nf(sup.h)} mm" +
