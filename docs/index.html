@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CutLink · imprime y corta sin Studio</title>
+<meta name="description" content="CutLink maneja una Silhouette CAMEO 4 desde una tablet Android, por Bluetooth: abre SVG, DXF y .studio3, acomoda, imprime y corta. Código abierto, Apache 2.0.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #fafcfd; --sheet: #fff;
+    --ink: #001876; --ink-2: #47588f; --ink-3: #8e9ac0;
+    --rule: rgba(0, 24, 118, .14);
+    --cyan: #00b8d9; --cyan-12: #e1f6fa; --cyan-20: #ccf1f7; --cyan-35: #a6e7f2;
+    --mag: #e0218a; --mag-ink: #ad0d67; --mag-12: #fce6f2;
+    --out: cubic-bezier(.16, 1, .3, 1);
+    --lift: 0 18px 44px rgba(11, 16, 32, .16);
+    --dots: radial-gradient(circle, #aee9f3 1.5px, transparent 1.7px) 0 0 / 14px 14px,
+            radial-gradient(circle, #aee9f3 1.5px, transparent 1.7px) 7px 7px / 14px 14px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 500 17px/1.55 "Barlow", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--cyan-35); }
+  a { color: inherit; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  img { max-width: 100%; height: auto; display: block; }
+
+  /* dos planchas: el índigo aparece solo cuando coinciden */
+  .plates { position: relative; display: inline-block; isolation: isolate; }
+  .plates > * { mix-blend-mode: multiply; transition: transform .9s var(--out); }
+  .plates .c { color: var(--cyan); } .plates .m { color: var(--mag); position: absolute; inset: 0; }
+  .off .plates .c { transform: translate(-3px, -2px); }
+  .off .plates .m { transform: translate(3px, 2px); }
+  .reg { overflow: visible; isolation: isolate; }
+  .reg g { fill: none; mix-blend-mode: multiply; transition: transform .9s var(--out); }
+  .reg g.c { stroke: var(--cyan); } .reg g.m { stroke: var(--mag); }
+  .off .reg g.c { transform: translate(-3px, -2.4px); }
+  .off .reg g.m { transform: translate(3px, 2.4px); }
+
+  /* barra */
+  header { position: sticky; top: 0; z-index: 10; background: rgba(250, 252, 253, .92); backdrop-filter: saturate(1.2) blur(8px);
+    border-bottom: 1px solid var(--rule); }
+  .bar { display: flex; align-items: center; gap: 22px; height: 64px; }
+  .brand { font-weight: 800; font-size: 22px; letter-spacing: -.01em; text-decoration: none; display: flex; align-items: center; gap: 10px; }
+  .brand .reg { width: 26px; height: 26px; }
+  .brand .reg g { stroke-width: 2; }
+  nav { margin-left: auto; display: flex; gap: 6px; }
+  nav a { text-decoration: none; font-weight: 600; padding: 8px 12px; border-radius: 10px; }
+  nav a:hover { background: var(--cyan-12); }
+  nav a.gh { background: var(--ink); color: #fff; }
+  nav a.gh:hover { background: #0a2590; }
+
+  /* portada */
+  .hero { position: relative; overflow: hidden; background: var(--cyan-20); }
+  .hero::before { content: ""; position: absolute; inset: 0; background: var(--dots); opacity: .9; }
+  .hero .wrap { position: relative; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; align-items: center;
+    padding-top: 72px; padding-bottom: 80px; }
+  h1 { font-size: clamp(44px, 6.4vw, 84px); line-height: .96; letter-spacing: -.03em; margin: 0 0 22px; font-weight: 800; }
+  h1 .plates { display: block; }
+  .lead { font-size: 20px; color: var(--ink-2); margin: 0 0 30px; max-width: 30ch; }
+  .lead b { color: var(--ink); font-weight: 600; }
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 54px; padding: 0 22px; border-radius: 16px; font-weight: 700;
+    text-decoration: none; font-size: 17px; transition: transform .15s, background .15s; }
+  .btn:active { transform: scale(.98); }
+  .btn.primary { background: var(--cyan); color: var(--ink); }
+  .btn.primary:hover { background: #12c4e4; }
+  .btn.paper { background: var(--paper); box-shadow: inset 0 0 0 2px var(--ink); }
+  .btn svg { width: 20px; height: 20px; fill: currentColor; }
+  .tablet { background: #0b1020; border-radius: 26px; padding: 14px; box-shadow: 0 22px 48px rgba(11, 16, 32, .28); transform: rotate(-1.2deg); }
+  .tablet img { border-radius: 14px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+  .facts span { background: var(--paper); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
+
+  /* secciones */
+  section { padding: 96px 0; }
+  .kicker-free h2 { font-size: clamp(32px, 4.2vw, 52px); line-height: 1.02; letter-spacing: -.025em; margin: 0 0 18px; font-weight: 800; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; }
+  .row + .row { margin-top: 96px; }
+  .row.flip .shot { order: 2; }
+  .shot { background: var(--cyan-20); border-radius: 22px; padding: 22px; position: relative; overflow: hidden; }
+  .shot::before { content: ""; position: absolute; inset: 0; background: var(--dots); }
+  .shot img { position: relative; border-radius: 12px; box-shadow: var(--lift); }
+  .row h3 { font-size: 32px; line-height: 1.05; letter-spacing: -.02em; margin: 0 0 14px; font-weight: 800; }
+  .row p { margin: 0 0 14px; color: var(--ink-2); max-width: 46ch; }
+  .row p b { color: var(--ink); font-weight: 600; }
+  .num { font-variant-numeric: tabular-nums; }
+  .compare { display: flex; gap: 14px; margin-top: 18px; }
+  .compare div { background: var(--cyan-12); border-radius: 14px; padding: 12px 18px; }
+  .compare div.win { background: var(--cyan); }
+  .compare b { display: block; font-size: 40px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .compare span { font-size: 14px; font-weight: 600; }
+
+  /* registro: la idea de la app */
+  .register { background: var(--ink); color: #fff; }
+  .register .wrap { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 56px; align-items: center; }
+  .register .big { width: 220px; height: 220px; background: var(--paper); border-radius: 50%; display: grid; place-items: center; }
+  .register .big .reg { width: 150px; height: 150px; }
+  .register .big .reg g { stroke-width: 1.1; }
+  .register h2 { color: #fff; }
+  .register p { color: #c4cbe6; max-width: 56ch; margin: 0 0 12px; }
+  .register p b { color: #fff; font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 22px; font-weight: 600; }
+  .legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 8px; }
+
+  /* piezas */
+  .pieces { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 0; border-top: 2px solid var(--ink); margin-top: 34px; }
+  .pieces div { padding: 26px 26px 6px 0; }
+  .pieces div + div { padding-left: 26px; border-left: 1px solid var(--rule); }
+  .pieces h4 { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
+  .pieces code { font-size: 14px; color: var(--ink-2); }
+  .pieces p { color: var(--ink-2); margin: 8px 0 0; }
+
+  /* instalar */
+  .install { background: var(--cyan-12); }
+  pre { background: var(--ink); color: #e1f6fa; border-radius: 16px; padding: 20px 22px; overflow-x: auto; font: 500 15px/1.6 ui-monospace, Consolas, monospace; margin: 18px 0 0; }
+  pre .k { color: var(--cyan-35); }
+  ol.steps { margin: 18px 0 0; padding-left: 22px; color: var(--ink-2); }
+  ol.steps li { margin-bottom: 8px; }
+  ol.steps b { color: var(--ink); font-weight: 600; }
+  .twocol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; }
+
+  /* licencia */
+  .license { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .card-lic { background: var(--sheet); border-radius: 22px; padding: 28px; box-shadow: var(--lift); }
+  .card-lic ul { margin: 12px 0 0; padding: 0; list-style: none; }
+  .card-lic li { padding: 10px 0; border-top: 1px solid var(--rule); display: flex; gap: 12px; }
+  .card-lic li:first-child { border-top: 0; }
+  .card-lic svg { width: 22px; height: 22px; flex: none; }
+  .yes { fill: var(--cyan); } .must { fill: var(--mag); }
+
+  footer { border-top: 1px solid var(--rule); padding: 36px 0 48px; color: var(--ink-2); font-size: 15px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; }
+  footer .brand { color: var(--ink); font-size: 18px; }
+
+  @media (max-width: 860px) {
+    .hero .wrap, .row, .register .wrap, .twocol, .license { grid-template-columns: minmax(0, 1fr); }
+    .row.flip .shot { order: 0; }
+    .pieces { grid-template-columns: 1fr; }
+    .pieces div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
+    nav a:not(.gh) { display: none; }
+    section { padding: 72px 0; }
+    .register .big { width: 160px; height: 160px; } .register .big .reg { width: 110px; height: 110px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body class="off">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="target" viewBox="0 0 26 26"><circle cx="13" cy="13" r="6.2"/><path d="M13 2.5v21M2.5 13h21"/></symbol>
+  <symbol id="gh" viewBox="0 0 24 24"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></symbol>
+  <symbol id="mark" viewBox="0 0 24 24"><path d="M11 7h2v6h-2zm0 8h2v2h-2zm1-13a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/></symbol>
+</defs></svg>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#" aria-label="CutLink">
+      <svg class="reg" viewBox="0 0 26 26" aria-hidden="true"><g class="c"><use href="#target"/></g><g class="m"><use href="#target"/></g></svg>
+      <span class="plates"><span class="c">CutLink</span><span class="m" aria-hidden="true">CutLink</span></span>
+    </a>
+    <nav>
+      <a href="#que-hace">Qué hace</a>
+      <a href="#instalar">Instalar</a>
+      <a href="#licencia">Licencia</a>
+      <a class="gh" href="https://github.com/foxen2005/CutLink">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <h1><span class="plates"><span class="c">Imprime</span><span class="m" aria-hidden="true">Imprime</span></span>
+          <span class="plates"><span class="c">y corta</span><span class="m" aria-hidden="true">y corta</span></span>
+          <span class="plates"><span class="c">sin Studio.</span><span class="m" aria-hidden="true">sin Studio.</span></span></h1>
+        <p class="lead"><b>CutLink</b> maneja tu Silhouette CAMEO 4 desde una tablet Android, por Bluetooth. Sin PC al lado de la máquina.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/foxen2005/CutLink"><svg aria-hidden="true"><use href="#gh"/></svg>Ver el código</a>
+          <a class="btn paper" href="#instalar">Cómo instalar</a>
+        </div>
+        <div class="facts"><span>SVG · DXF · .studio3</span><span>Print &amp; Cut</span><span>Código abierto</span></div>
+      </div>
+      <div class="tablet"><img src="img/editor.png" width="1280" height="800" alt="CutLink en una tablet: 28 círculos de 40 mm acomodados en una hoja A4 con marcas de Print &amp; Cut"></div>
+    </div>
+  </div>
+
+  <section id="que-hace" class="kicker-free">
+    <div class="wrap">
+      <h2>Lo de todos los días, en una tablet.</h2>
+
+      <div class="row">
+        <div class="shot"><img src="img/inicio.png" width="1280" height="800" loading="lazy" alt="Pantalla de inicio de CutLink: abre un diseño para cortar"></div>
+        <div>
+          <h3>Abre lo que ya tienes</h3>
+          <p>SVG de Illustrator, DXF y archivos <b>.studio3</b> de Silhouette Studio, desde Archivos, Drive o «Abrir con» en WhatsApp.</p>
+          <p>Si un .studio3 trae imágenes pesadas, te pregunta: para cortar <b>bastan las líneas</b>, y así abre al tiro.</p>
+        </div>
+      </div>
+
+      <div class="row flip">
+        <div class="shot"><img src="img/editor.png" width="1280" height="800" loading="lazy" alt="Editor con selección, rejilla de herramientas y panel de medidas"></div>
+        <div>
+          <h3>Rellena la hoja de verdad</h3>
+          <p>Elige un sticker, toca Rellenar y CutLink prueba grilla, columnas y filas alternadas, normales y giradas, con la separación que pidas.</p>
+          <div class="compare"><div><b class="num">24</b><span>en grilla</span></div><div class="win"><b class="num">28</b><span>CutLink</span></div></div>
+          <p style="margin-top:12px">Círculos de 40 mm en A4 con marcas, a 3 mm. La imagen de una copia nunca se imprime dentro de la vecina.</p>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="shot"><img src="img/confirmar.png" width="1280" height="800" loading="lazy" alt="Confirmación de corte: soporte, material, cuchilla, largo de corte y Print &amp; Cut"></div>
+        <div>
+          <h3>Lo irreversible, en datos</h3>
+          <p>Antes de cortar ves exactamente qué va a hacer la máquina: soporte, material, velocidad, presión, cuchilla y largo de corte.</p>
+          <p><b>Print &amp; Cut</b> con marcas: imprime la hoja, la Cameo las lee con su sensor y corta encima.</p>
+        </div>
+      </div>
+
+      <div class="row flip">
+        <div class="shot"><img src="img/maquina.png" width="1280" height="800" loading="lazy" alt="Pantalla Máquina: estado de la Cameo, buscar, estado y desconectar"></div>
+        <div>
+          <h3>La máquina, sin vueltas</h3>
+          <p>Buscar, estado y desconectar. La última Cameo se reconecta sola al abrir la app; lo técnico queda guardado en «Opciones avanzadas».</p>
+          <p>Probado con <b>CAMEO 4, firmware V1.20</b>, por Bluetooth clásico.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="register kicker-free">
+    <div class="wrap">
+      <div class="big"><svg class="reg" viewBox="0 0 26 26" aria-hidden="true"><g class="c"><use href="#target"/></g><g class="m"><use href="#target"/></g></svg></div>
+      <div>
+        <h2>El estado se lee en el registro.</h2>
+        <p>Como en una impresión a dos tintas: sin máquina, la marca sale <b>fuera de registro</b>. Cuando la Cameo está lista, cian y magenta se juntan en índigo.</p>
+        <p>Mientras la máquina busca las marcas de Print &amp; Cut, las líneas de corte se separan en dos planchas y se cierran al encontrarlas.</p>
+        <div class="legend"><span><i style="background:var(--cyan)"></i>Acción</span><span><i style="background:var(--mag)"></i>Lo que no se deshace</span><span><i style="background:#3d58c9"></i>Todo en registro</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="kicker-free">
+    <div class="wrap">
+      <h2>Tres piezas, una idea.</h2>
+      <p style="color:var(--ink-2);max-width:60ch;margin:0">Hoy maneja la Silhouette CAMEO 4. La idea es sumar más máquinas de corte.</p>
+      <div class="pieces">
+        <div><h4>CutLink</h4><code>android/</code><p>App para tablet Android en Kotlin. Abre, acomoda, imprime y corta por Bluetooth.</p></div>
+        <div><h4>Bridge</h4><code>bridge/</code><p>Python: lectores de SVG, DXF y .studio3, y el idioma GPGL de la máquina. La app lo lleva adentro.</p></div>
+        <div><h4>Cameo Cut</h4><code>panel/</code><p>Panel para Adobe Illustrator 2025 que corta directo desde Illustrator por USB.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="instalar" class="install kicker-free">
+    <div class="wrap twocol">
+      <div>
+        <h2>Instalar</h2>
+        <ol class="steps">
+          <li>Clona el repositorio y abre <b>android/</b> con Android Studio, o compila desde la consola.</li>
+          <li>Necesitas el JDK 17 o más nuevo y Python 3.14 para empaquetar el bridge (Chaquopy).</li>
+          <li>Instala el APK en la tablet (Android 8 o más nuevo) y empareja la Cameo por Bluetooth.</li>
+        </ol>
+      </div>
+      <div>
+        <pre><span class="k">git clone</span> https://github.com/foxen2005/CutLink
+<span class="k">cd</span> CutLink/android
+<span class="k">./gradlew</span> assembleDebug
+<span class="k">adb install</span> app/build/outputs/apk/debug/app-debug.apk</pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="licencia" class="kicker-free">
+    <div class="wrap license">
+      <div>
+        <h2>Bájalo, úsalo, mejóralo.</h2>
+        <p style="color:var(--ink-2);max-width:52ch">CutLink es código abierto bajo la <a href="https://github.com/foxen2005/CutLink/blob/main/LICENSE">Licencia Apache 2.0</a>. Puedes usarlo, modificarlo y compartirlo, también en proyectos tuyos, siempre dando crédito.</p>
+      </div>
+      <div class="card-lic">
+        <ul>
+          <li><svg class="yes" aria-hidden="true"><use href="#check"/></svg><span>Bajarlo, usarlo y modificarlo</span></li>
+          <li><svg class="yes" aria-hidden="true"><use href="#check"/></svg><span>Compartir tu versión</span></li>
+          <li><svg class="must" aria-hidden="true"><use href="#mark"/></svg><span>Mantener el aviso de autoría y el archivo <a href="https://github.com/foxen2005/CutLink/blob/main/NOTICE">NOTICE</a></span></li>
+          <li><svg class="must" aria-hidden="true"><use href="#mark"/></svg><span>Dar crédito a Digital Fox y marcar lo que cambiaste</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="brand">CutLink</span>
+    <span>Hecho por <a href="https://digitalfox.cl">Digital Fox</a>, Puerto Montt.</span>
+    <span>Silhouette y CAMEO son marcas de Silhouette America; CutLink no tiene relación con ellos.</span>
+  </div>
+</footer>
+
+<script>
+  // la marca entra fuera de registro y cierra: la misma idea que la app
+  const go = () => document.body.classList.remove("off");
+  matchMedia("(prefers-reduced-motion: reduce)").matches ? go() : setTimeout(go, 500);
+</script>
+</body>
+</html>

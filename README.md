@@ -1,7 +1,15 @@
 # CutLink
 
-Imprimir y cortar sin Silhouette Studio. Hoy maneja la Silhouette CAMEO 4; la idea es sumar
-más máquinas. Tres piezas:
+**Imprime y corta sin Silhouette Studio.** CutLink maneja una Silhouette CAMEO 4 desde una tablet
+Android, por Bluetooth: abre SVG, DXF y .studio3, acomoda, rellena la hoja, imprime y corta, también
+con Print & Cut. Hoy funciona con la CAMEO 4; la idea es sumar más máquinas.
+
+![CutLink en una tablet: 28 círculos acomodados en una hoja A4 con marcas](docs/img/editor.png)
+
+Página del proyecto: [`docs/index.html`](docs/index.html) · Licencia: [Apache 2.0](LICENSE) con
+crédito obligatorio ([NOTICE](NOTICE)).
+
+## Piezas
 
 - `android/` — **CutLink**, app para tablet Android: abre SVG, DXF y .studio3, acomoda,
   imprime y corta por Bluetooth (también Print & Cut). Ver `DESIGN.md` para su estilo.
@@ -58,3 +66,11 @@ servicio; también se puede a mano:
 ## Referencias del protocolo
 - Comandos GPGL: https://github.com/fablabnbg/inkscape-silhouette/blob/main/Commands.md
 - Unidades: 1 mm = 20 SU; coordenadas `y,x`. Cameo 4: velocidad 1–30, presión 1–33, AutoBlade 1–10.
+
+## Licencia
+
+CutLink es código abierto bajo la [Licencia Apache 2.0](LICENSE). Puedes bajarlo, usarlo,
+modificarlo y compartirlo, también en proyectos propios, siempre que mantengas el aviso de
+autoría y el archivo [NOTICE](NOTICE), des crédito a **Digital Fox** y marques lo que cambiaste.
+
+Silhouette y CAMEO son marcas de Silhouette America, Inc.; CutLink no tiene relación con ellos.

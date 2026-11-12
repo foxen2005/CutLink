@@ -1,0 +1,17 @@
+CutLink
+Copyright 2026 Digital Fox (https://digitalfox.cl)
+
+Este producto incluye software desarrollado por Digital Fox: la app CutLink para
+Android, el bridge en Python y el panel Cameo Cut para Adobe Illustrator.
+
+Quien redistribuya este software o una obra derivada debe conservar este aviso
+y dar crédito visible a Digital Fox, como pide la sección 4 de la Licencia
+Apache 2.0 (archivo LICENSE).
+
+Partes de terceros incluidas:
+- Barlow (Jeremy Tribby), SIL Open Font License 1.1: android/app/src/main/res/font
+- Material Icons (Google), Apache License 2.0: iconos vectoriales de la app
+- svgelements (Tatarize), MIT: lector de SVG usado por el bridge
+
+Silhouette, CAMEO y Silhouette Studio son marcas de Silhouette America, Inc.
+CutLink es un proyecto independiente, sin relación con Silhouette America.
